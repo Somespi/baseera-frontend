@@ -78,5 +78,7 @@ vase
 scissors
 teddy bear
 hair  
- drier
+drier
 toothbrush
+??
+??
