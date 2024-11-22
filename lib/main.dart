@@ -172,18 +172,16 @@ imglib.Image _convertNV21(Nv21Image image) {
     image.height,
   );
 
-  
 
   final img = imglib.Image.fromBytes(
-      width: image.width,
-      height: image.height,
-      bytes: rgba.buffer,
-      format: imglib.Format.uint8,
-      numChannels: 4 // r, g, b, a
-      );
+    width: image.width,
+    height: image.height,
+    bytes: rgba.buffer,
+    format: imglib.Format.uint8,
+    numChannels: 4
+  );
 
-
-  return img;
+  return img.convert(numChannels: 3);
 }
 
 
