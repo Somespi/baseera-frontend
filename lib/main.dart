@@ -4,70 +4,66 @@ import 'package:flutter/foundation.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as imglib;
 import 'package:yuv_converter/yuv_converter.dart';
+import 'dart:math';
 
+// Global variables
 bool objectDetection = false;
-IsolateInterpreter? interpreter;
 
-// Utility debug print
-void print4d(value) {
+// Debug utility
+void printDebug(value) {
   if (kDebugMode) print(value);
 }
 
-// Load the TensorFlow Lite model
-Future<void> loadModel() async {
+// Load TensorFlow Lite model
+Future<Interpreter> loadModel() async {
   const assetFileName = 'assets/models/yolov5nu_float32.tflite';
-  try {
-    Interpreter inter = await Interpreter.fromAsset(assetFileName);
-    interpreter = await IsolateInterpreter.create(address: inter.address);
-    print4d("Model loaded successfully.");
-  } catch (e) {
-    print4d("Error loading model: $e");
-  }
+  Interpreter inter = await Interpreter.fromAsset(assetFileName);
+  return inter;
 }
 
-// Run object detection in the background
-Future<void> runObjectDetectionInBackground(Nv21Image image) async {
-  try {
-    final result = await compute(_processImageForDetection, image);
-    print4d("Detection Outputs: $result");
-  } catch (e) {
-    print4d("Error during object detection: $e");
-  }
+Future<String> runObjectDetectionInBackground(
+    Nv21Image image, Interpreter interpreter) async {
+  interpreter.allocateTensors();
+  final inputDetails = interpreter.getInputTensors();
+  final outputDetails = interpreter.getOutputTensors();
+  final result = _detectObjects(
+      await compute(_processImageForDetection,
+          [image, inputDetails[0].shape, outputDetails[0].shape]),
+      interpreter);
+  final detections = postProcess(
+      await result, 0.5, 0.4); // Confidence threshold: 0.5, NMS threshold: 0.4
+  return "Post Processed Detections: $detections";
 }
 
-// Background function to process image and run detection
-Future<List> _processImageForDetection(Nv21Image image) async {
+_detectObjects(List inout, Interpreter inter) async {
+  dynamic out = inout[1];
+  inter.run(inout[0], out);
+  return out;
+}
+
+Future<List> _processImageForDetection(dynamic message) async {
   try {
-    final rgbImage = _convertNV21(image);
-    final resizedImage = imglib.copyResize(rgbImage, width: 320, height: 320);
+    final rgbImage = _convertNV21(message[0]);
+
+    final resizedImage = imglib.copyResize(rgbImage,
+        width: message[1][2], height: message[1][1]);
 
     final normalizedPixels = resizedImage.data!
-        .map((pixel) {
-          final r = (pixel.r) / 255.0;
-          final g = (pixel.g) / 255.0;
-          final b = (pixel.b) / 255.0;
-          return [r, g, b];
-        })
+        .map((pixel) =>
+            [(pixel.r / 255.0), (pixel.g / 255.0), (pixel.b / 255.0)])
         .expand((rgb) => rgb)
         .toList();
 
-    final inputImage = Uint8List.fromList(
-        normalizedPixels.map((e) => (e * 255).toInt()).toList());
+    var inputImage = Float32List.fromList(normalizedPixels).reshape(message[1]);
+    var outputs = List.filled(1 * 84 * 8400, 0).reshape(message[2]);
 
-    assert(inputImage.length == 320 * 320 * 3,
-        "Expected input size does not match!");
-
-    var outputs = List.filled(1 * 84 * 8400, 0).reshape([1, 84, 8400]);
-    await interpreter?.run(inputImage, outputs);
-
-    return outputs;
+    return [inputImage, outputs];
   } catch (e) {
-    print4d("Error during image processing: $e");
+    printDebug("Error during image processing: $e");
     return [];
   }
 }
 
-// Convert NV21 image format to RGB
 imglib.Image _convertNV21(Nv21Image image) {
   Uint8List rgbga = YuvConverter.yuv420NV21ToRgba8888(
     image.bytes,
@@ -93,24 +89,38 @@ imglib.Image _convertNV21(Nv21Image image) {
   return outImg;
 }
 
-// Utility function to reshape a flat list into a 4D list
-List<List<List<List<double>>>> reshape(List<double> data, List<int> shape) {
-  int index = 0;
-  int dim1 = shape[0];
-  int dim2 = shape[1];
-  int dim3 = shape[2];
-  int dim4 = shape[3];
+// Post-processing function (apply confidence threshold and NMS)
+List<Map<String, dynamic>> postProcess(List<List<List<dynamic>>> out,
+    double confidenceThreshold, double nmsThreshold) {
+  List<Map<String, dynamic>> detections = [];
+  List<List<double>> output = out[0] as List<List<double>>;
+  // Iterate over the model's outputs (bounding boxes)
+  for (var row in output) {
+    printDebug(row);
+    final confidence = row[4]; // Confidence score
+    if (confidence > confidenceThreshold) {
+      final xCenter = row[0];
+      final yCenter = row[1];
+      final width = row[2];
+      final height = row[3];
+      final classId =
+          row.sublist(5).indexWhere((val) => val == row.sublist(5).reduce(max));
 
-  return List.generate(
-      dim1,
-      (_) => List.generate(
-          dim2,
-          (_) => List.generate(
-              dim3, (_) => List.generate(dim4, (_) => data[index++]))));
+      // Create a detection
+      detections.add({
+        'box': Rect.fromLTWH(
+            xCenter - width / 2, yCenter - height / 2, width, height),
+        'confidence': confidence,
+        'classId': classId,
+      });
+    }
+  }
+
+  return detections;
 }
 
-// Main entry point of the app
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -140,6 +150,8 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = true;
+  late Interpreter _interpreter;
+  String? _out;
 
   @override
   void initState() {
@@ -147,22 +159,19 @@ class _MyHomePageState extends State<MyHomePage> {
     _initializeModel();
   }
 
-  Future<void> analyzeImage(dynamic image) async {
-    await runObjectDetectionInBackground(image);
+  Future<void> _initializeModel() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    _interpreter = await loadModel();
+    setState(() {
+      _isLoading = false;
+    });
   }
 
-  Future<void> _initializeModel() async {
-    try {
-      await loadModel();
-      setState(() {
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      print4d("Error initializing model: $e");
-    }
+  Future<String> analyzeImage(dynamic image) async {
+    return await runObjectDetectionInBackground(image, _interpreter);
   }
 
   @override
@@ -174,20 +183,25 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    return CameraAwesomeBuilder.custom(
-      builder: (cameraState, previewSize, previewRect) {
-      },
-      saveConfig: SaveConfig.photo(),
+    return CameraAwesomeBuilder.analysisOnly(
       onImageForAnalysis: (image) async {
-        await analyzeImage(image);
+        String val = await analyzeImage(image);
+        setState(() {
+          _out = val;
+        });
       },
       imageAnalysisConfig: AnalysisConfig(
         androidOptions: const AndroidAnalysisOptions.nv21(
-          width: 640,
+          width: 320,
         ),
         autoStart: true,
-        maxFramesPerSecond: 10,
+        maxFramesPerSecond: 4,
       ),
+      builder: (CameraState state, Preview preview) {
+        return Scaffold(
+          body: Center(child: Text(_out ?? "Analyzing...")),
+        );
+      },
     );
   }
 }

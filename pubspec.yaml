@@ -95,6 +95,5 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
   assets:
-    - assets/models/yolo11n.tflite
     - assets/
-    - assets/models/yolo11n_int8.tflite
+    - assets/models/yolov5nu_float32.tflite
