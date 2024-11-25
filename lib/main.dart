@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'help_utilities.dart';
 import 'yolo.dart' as yolo; 
+import 'assistive_units/braille_display.dart' as braille_display;
 
 late List<String> labels;
 
