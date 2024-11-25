@@ -39,7 +39,7 @@ Future<String> runObjectDetectionInBackground(
 
   final detections = processOutputs(result[0], image.width, image.height, labels, 0.5, 0.5);
 
-  return "Post Processed Detections: $detections";
+  return detections;
 }
 
 List<Map<String, dynamic>> processOutputs(
