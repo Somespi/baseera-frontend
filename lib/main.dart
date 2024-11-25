@@ -60,7 +60,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  Future<String> analyzeImage(dynamic image) async {
+  Future<List<Map<String, dynamic>>> analyzeImage(dynamic image) async {
     return await yolo.runObjectDetectionInBackground(image, _interpreter);
   }
 
@@ -79,13 +79,11 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    return CameraAwesomeBuilder.awesome(
+    return CameraAwesomeBuilder.analysisOnly(
       onImageForAnalysis: (image) async {
-        String val = await analyzeImage(image);
+        List<Map<String, dynamic>> val = await analyzeImage(image);
         printDebug(val);
-        setState(() {
-          _out = val;
-        });
+        
       },
       imageAnalysisConfig: AnalysisConfig(
         androidOptions: const AndroidAnalysisOptions.nv21(
@@ -94,12 +92,11 @@ class _MyHomePageState extends State<MyHomePage> {
         autoStart: true,
         maxFramesPerSecond: 5,
       ),
-      saveConfig: SaveConfig.photo(),
-      // builder: (CameraState state, Preview preview) {
-      //   return Scaffold(
-      //     body: Center(child: Text(_out ?? "Analyzing...")),
-      //   );
-      // },
+      builder: (CameraState state, Preview preview) {
+        return Scaffold(
+          body: Center(child: Text(_out ?? "Analyzing...")),
+        );
+      },
     );
   }
 }
