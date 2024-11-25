@@ -4,6 +4,12 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'help_utilities.dart';
 import 'yolo.dart' as yolo; 
 import 'assistive_units/braille_display.dart' as braille_display;
+import 'text_to_speech.dart' as tts;
+import 'speech_to_text.dart' as stt;
+import 'vqa.dart' as vqa;
+
+
+
 
 late List<String> labels;
 
