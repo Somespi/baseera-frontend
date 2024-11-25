@@ -1,4 +1,4 @@
-import 'package:baseerah/assistive_units/assistive_unit.dart';
+import 'assistive_unit.dart.txt';
 
 class BrailleDisplay extends AssistiveUnit {
   BrailleDisplay(String bleAddress)

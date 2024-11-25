@@ -13,7 +13,6 @@ Future<List<String>> loadLabels() async {
   return (await rootBundle.loadString("assets/models/labels.txt")).split('\n');
 }
 
-late List<String> labels;
 
 
 Future<Interpreter> loadModel() async {
@@ -29,7 +28,7 @@ Future<Interpreter> loadModel() async {
 }
 
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    Nv21Image image, Interpreter interpreter) async {
+    Nv21Image image, Interpreter interpreter, List<String> labels) async {
   final inputDetails = interpreter.getInputTensors();
   final outputDetails = interpreter.getOutputTensors();
   final result = await _detectObjects(
@@ -89,7 +88,7 @@ Future<List<List<List<dynamic>>>> _detectObjects(
 
 Future<List> _processImageForDetection(dynamic message) async {
   try {
-    final rgbImage = _convertNV21(message[0]);
+    final rgbImage = convertNV21(message[0]);
 
     final resizedImage = imglib.copyResize(rgbImage,
         width: message[1][2], height: message[1][1]);
@@ -145,7 +144,7 @@ double computeIoU(List<int> boxA, List<int> boxB) {
   return intersectionArea / (boxAArea + boxBArea - intersectionArea);
 }
 
-imglib.Image _convertNV21(Nv21Image image) {
+imglib.Image convertNV21(Nv21Image image) {
   Uint8List rgba = YuvConverter.yuv420NV21ToRgba8888(
     image.bytes,
     image.width,

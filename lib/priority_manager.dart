@@ -1,7 +1,8 @@
+import 'package:baseerah/help_utilities.dart';
 
-
+import 'text_to_speech.dart' as tts;
+import 'speech_to_text.dart' as stt;
 import 'package:image/image.dart';
-
 import 'vqa.dart';
 
 
@@ -19,10 +20,10 @@ class PriorityItem {
   };
 
   final bool isPersonMoving;
-  final bool isObjectMoving;
+  late final bool isObjectMoving;
   final String label;
   final double weight;
-  final String direction;
+  late final String direction;
   final String? directionMoving;
 
   PriorityItem({
@@ -52,11 +53,14 @@ class PriorityItem {
     return 'LOW';
   }
 
-  Future<void> performAction(String weight, Image frame) async {
+
+  
+  static Future<void> performStaticAction(String weight, Image frame) async {
+    printDebug("Performing action with weight $weight");
     if (weight == 'HIGH') {
       final caption = await VQA().caption(frame);
-      print(caption);
-      
+      printDebug(caption);
+
     } else if (weight == 'MEDIUM') {
       // Perform medium priority action
     }
