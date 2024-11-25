@@ -36,9 +36,8 @@ class AudioRecord {
       return;
     }
     if (await _recorder!.hasPermission()) {
-      stream = await _recorder?.startStream(
-        const RecordConfig(encoder: AudioEncoder.pcm16bits)
-      );
+      stream = await _recorder
+          ?.startStream(const RecordConfig(encoder: AudioEncoder.pcm16bits));
       printDebug('Recording started');
     } else {
       printDebug('Permission not granted');
@@ -48,11 +47,11 @@ class AudioRecord {
   /// Stops the audio recording.
   ///
   /// This method will check if the recorder has been initialized. If it has,
-  /// the recording will be stopped. If the recorder is not initialized, 
+  /// the recording will be stopped. If the recorder is not initialized,
   /// a debug message is printed and the method returns null.
   ///
-  /// Returns a [Stream] of [Uint8List] containing the recorded audio data 
-  /// if the recording was successfully stopped, or null if the recorder 
+  /// Returns a [Stream] of [Uint8List] containing the recorded audio data
+  /// if the recording was successfully stopped, or null if the recorder
   /// was not initialized.
   Future<Stream<Uint8List>?> stopRecording() async {
     if (_recorder == null) {
@@ -63,6 +62,7 @@ class AudioRecord {
     // Stop the recording and return the stream.
     final _ = await _recorder?.stop();
     printDebug('Recording stopped');
+    _recorder?.dispose();
     return stream;
   }
 }
