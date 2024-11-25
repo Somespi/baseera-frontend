@@ -98,3 +98,5 @@ flutter:
   assets:
     - assets/models/yolov10n_float32.tflite
     - assets/models/labels.txt
+    - assets/models/mobilenet_ssd_v2_coco_quant_postprocess.tflite
+    - assets/models/yolov5.tflite
