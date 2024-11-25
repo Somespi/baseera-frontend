@@ -28,7 +28,7 @@ Future<Interpreter> loadModel() async {
   }
 }
 
-Future<String> runObjectDetectionInBackground(
+Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
     Nv21Image image, Interpreter interpreter) async {
   final inputDetails = interpreter.getInputTensors();
   final outputDetails = interpreter.getOutputTensors();
