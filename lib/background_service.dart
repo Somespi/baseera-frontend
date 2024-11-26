@@ -3,25 +3,33 @@
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
-import 'package:camerawesome/camerawesome_plugin.dart';
+import 'package:baseerah/image_retriever.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:image/image.dart' as img;
+import 'package:image/image.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'yolo.dart';
 
 late List<String> labels;
 late FlutterBackgroundService service;
+final imageRetriever = BluetoothImageRetriever();
+RootIsolateToken? token;
 
-Future<void> initializeService() async {
+Future<void> initializeService(tok) async {
+  token = tok;
   labels = await loadLabels();
   service = FlutterBackgroundService();
   await service.configure(
     androidConfiguration: AndroidConfiguration(
-      onStart: onStart,
-      autoStartOnBoot: true,
-      autoStart: true,
-      isForegroundMode: true,
-    ),
+        onStart: onStart,
+        autoStartOnBoot: true,
+        autoStart: true,
+        isForegroundMode: true,
+        foregroundServiceTypes: [
+          AndroidForegroundType.mediaPlayback,
+          AndroidForegroundType.location,
+          AndroidForegroundType.microphone
+        ]),
     iosConfiguration: IosConfiguration(
       autoStart: true,
       onForeground: onStart,
@@ -30,7 +38,7 @@ Future<void> initializeService() async {
 }
 
 Future<void> onStart(ServiceInstance service) async {
-  Timer.periodic(const Duration(seconds: 10), (_) {
+  Timer.periodic(const Duration(seconds: 1), (_) {
     performObjectDetection();
   });
 }
@@ -45,29 +53,12 @@ void performObjectDetection() async {
 
 Future<void> _objectDetectionIsolate() async {
   try {
-    final interpreter = await loadModel();
-    final receivePort = ReceivePort();
-
-    // Implement a mechanism to control the loop
-    bool shouldContinue = true;
-    while (shouldContinue) {
-      try {
-        final imageBuffer = await _getImageBuffer();
-        if (imageBuffer != null) {
-          final image = img.decodeImage(imageBuffer);
-          if (image != null) {
-            final detections =
-                await _runDetection(interpreter, image as Nv21Image);
-            // Send results back or process them
-          }
-        }
-
-        await Future.delayed(const Duration(milliseconds: 1000));
-      } catch (e) {
-        print('Detection cycle error: $e');
-        shouldContinue = false;
-      }
+    final localToken = ServicesBinding.rootIsolateToken;
+    if (localToken != null) {
+      BackgroundIsolateBinaryMessenger.ensureInitialized(localToken);
     }
+
+    await imageRetriever.startImageProcessing('24:D7:EB:0F:09:02', token);
   } catch (e) {
     print('Isolate initialization error: $e');
   }
@@ -77,6 +68,6 @@ Future<Uint8List?> _getImageBuffer() async {
   return null;
 }
 
-Future<List> _runDetection(Interpreter interpreter, Nv21Image image) async {
+Future<List> _runDetection(Interpreter interpreter, Image image) async {
   return await runObjectDetectionInBackground(image, interpreter, labels);
 }

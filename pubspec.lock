@@ -17,6 +17,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.11.0"
+  bluetooth_classic:
+    dependency: "direct main"
+    description:
+      name: bluetooth_classic
+      sha256: ebb57bb0b8cb89f7a538f2cc7cb5576edbabaab4482d89876861c476ef7bfbc6
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.2"
   boolean_selector:
     dependency: transitive
     description:

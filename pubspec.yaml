@@ -49,6 +49,7 @@ dependencies:
   flutter_tts: ^4.2.0
   sensors_plus: ^6.1.0
   flutter_background_service: ^5.0.10
+  bluetooth_classic: ^0.0.2
 
 dev_dependencies:
   flutter_test:

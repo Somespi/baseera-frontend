@@ -31,6 +31,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
+
+ <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:foregroundServiceType="mediaPlayback|location|microphone"
+            android:exported="true"
+            >
+        </service>
+
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

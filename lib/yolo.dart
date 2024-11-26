@@ -28,7 +28,7 @@ Future<Interpreter> loadModel() async {
 }
 
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    Nv21Image image, Interpreter interpreter, List<String> labels) async {
+    imglib.Image image, Interpreter interpreter, List<String> labels) async {
   final inputDetails = interpreter.getInputTensors();
   final outputDetails = interpreter.getOutputTensors();
   final result = await _detectObjects(
@@ -144,17 +144,17 @@ double computeIoU(List<int> boxA, List<int> boxB) {
   return intersectionArea / (boxAArea + boxBArea - intersectionArea);
 }
 
-imglib.Image convertNV21(Nv21Image image) {
-  Uint8List rgba = YuvConverter.yuv420NV21ToRgba8888(
-    image.bytes,
-    image.width,
-    image.height,
-  );
+imglib.Image convertNV21(imglib.Image image) {
+  // Uint8List rgba = YuvConverter.yuv420NV21ToRgba8888(
+  //   image.bytes,
+  //   image.width,
+  //   image.height,
+  // );
 
   final img = imglib.Image.fromBytes(
       width: image.width,
       height: image.height,
-      bytes: rgba.buffer,
+      bytes: image.buffer,
       format: imglib.Format.uint8,
       numChannels: 4);
 
