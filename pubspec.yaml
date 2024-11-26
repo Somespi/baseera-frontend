@@ -48,6 +48,7 @@ dependencies:
   speech_to_text: ^7.0.0
   flutter_tts: ^4.2.0
   sensors_plus: ^6.1.0
+  flutter_background_service: ^5.0.10
 
 dev_dependencies:
   flutter_test:
