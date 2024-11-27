@@ -13,8 +13,6 @@ Future<List<String>> loadLabels() async {
   return (await rootBundle.loadString("assets/models/labels.txt")).split('\n');
 }
 
-
-
 Future<Interpreter> loadModel() async {
   const assetFileName = 'assets/models/yolov5.tflite';
   try {
@@ -36,7 +34,8 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
           [image, inputDetails[0].shape, outputDetails[0].shape]),
       interpreter);
 
-  final detections = processOutputs(result[0], image.width, image.height, labels, 0.5, 0.5);
+  final detections =
+      processOutputs(result[0], image.width, image.height, labels, 0.6, 0.6);
 
   return detections;
 }
@@ -69,10 +68,11 @@ List<Map<String, dynamic>> processOutputs(
       'bbox': [x, y, w, h],
       'classIndex': classIndex,
       'className': labels[classIndex],
-      'confidence': boxConfidence * classProb,
+      'confidence': classProb,
     });
   }
-  detections.removeWhere((detection) => detection['bbox'][2] < 5 || detection['bbox'][3] < 5);
+  detections.removeWhere(
+      (detection) => detection['bbox'][2] < 5 || detection['bbox'][3] < 5);
 
   return applyNMS(detections, 0.5);
 }
@@ -81,22 +81,23 @@ Future<List<List<List<dynamic>>>> _detectObjects(
     List<dynamic> inout, Interpreter interpreter) async {
   if (inout[0] == null) throw Exception("Input tensor is null.");
   List<List<List<dynamic>>> out = List<num>.filled(1 * 6300 * 85, 0)
-      .reshape([1, 6300, 85] ) as List<List<List<dynamic>>>;
+      .reshape([1, 6300, 85]) as List<List<List<dynamic>>>;
   interpreter.run(inout[0], out);
   return out;
 }
 
 Future<List> _processImageForDetection(dynamic message) async {
   try {
-    final rgbImage = convertNV21(message[0]);
+    final imglib.Image img = message[0];
 
-    final resizedImage = imglib.copyResize(rgbImage,
-        width: message[1][2], height: message[1][1]);
+    final resizedImage =
+        imglib.copyResize(img, width: message[1][2], height: message[1][1]);
 
     var dat = resizedImage.data!.buffer.asUint8List();
-
-    final normalizedPixels =
-        List.generate(dat.length ~/ 3, (i) => [dat[i * 3], dat[i * 3 + 1], dat[i * 3 + 2]]).expand((rgb) => rgb).toList();
+    final normalizedPixels = List.generate(dat.length ~/ 3,
+            (i) => [dat[i * 3], dat[i * 3 + 1], dat[i * 3 + 2]])
+        .expand((rgb) => rgb)
+        .toList();
 
     var inputImage = Uint8List.fromList(normalizedPixels).reshape(message[1]);
 
@@ -114,7 +115,8 @@ Future<List> _processImageForDetection(dynamic message) async {
   }
 }
 
-List<Map<String, dynamic>> applyNMS(List<Map<String, dynamic>> detections, double iouThreshold) {
+List<Map<String, dynamic>> applyNMS(
+    List<Map<String, dynamic>> detections, double iouThreshold) {
   detections.sort((a, b) => b['confidence'].compareTo(a['confidence']));
   List<Map<String, dynamic>> nmsDetections = [];
 
@@ -144,19 +146,8 @@ double computeIoU(List<int> boxA, List<int> boxB) {
   return intersectionArea / (boxAArea + boxBArea - intersectionArea);
 }
 
-imglib.Image convertNV21(imglib.Image image) {
-  // Uint8List rgba = YuvConverter.yuv420NV21ToRgba8888(
-  //   image.bytes,
-  //   image.width,
-  //   image.height,
-  // );
-
-  final img = imglib.Image.fromBytes(
-      width: image.width,
-      height: image.height,
-      bytes: image.buffer,
-      format: imglib.Format.uint8,
-      numChannels: 4);
-
-  return img.convert(numChannels: 3);
+imglib.Image fromJpegToImg(JpegImage image) {
+  final img = imglib.decodeJpg(image.bytes);
+  if (img == null) throw Exception("Error decoding JPEG image.");
+  return img;
 }
