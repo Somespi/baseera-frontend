@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/services.dart';
 import 'package:serialport_plus/serialport_plus.dart';
 import 'dart:typed_data';
@@ -54,7 +57,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Uint8List? _img;
   UsbPort? _port;
   List _devices = [];
-  Uint8List? _buffer;
+  String? _out;
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
 
@@ -93,107 +96,79 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    return CameraAwesomeBuilder.analysisOnly(
-      onImageForAnalysis: (image) async {
-        // final detections = await yolo.runObjectDetectionInBackground(
-        //     yolo.fromJpegToImg(image as JpegImage), _interpreter, labels);
-        // printDebug(detections);
-      },
-      imageAnalysisConfig: AnalysisConfig(
-        androidOptions: const AndroidAnalysisOptions.jpeg(
-          width: 1080,
-        ),
-        autoStart: true,
-        maxFramesPerSecond: 5,
-      ),
-      builder: (CameraState state, Preview preview) {
-        return Scaffold(
-          floatingActionButton: FloatingActionButton(
-            onPressed: () async {
-              List<UsbDevice> devices = await UsbSerial.listDevices();
-              printDebug("Found ${devices.length} devices");
-              if (devices.isEmpty) {
-                return;
-              }
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          List<UsbDevice> devices = await UsbSerial.listDevices();
+          printDebug("Found ${devices.length} devices");
+          if (devices.isEmpty) {
+            return;
+          }
 
-              UsbPort? port = await devices[0].create();
-              if (port == null) {
-                printDebug("Failed to create port");
-                return;
-              }
-              _port = port;
+          UsbPort? port = await devices[0].create();
+          if (port == null) {
+            printDebug("Failed to create port");
+            return;
+          }
+          _port = port;
 
-              bool openResult = await port.open();
-              if (!openResult) {
-                printDebug("Failed to open port");
-                return;
-              }
+          bool openResult = await port.open();
+          if (!openResult) {
+            printDebug("Failed to open port");
+            return;
+          }
 
-              await port.setDTR(true);
-              await port.setRTS(true);
+          await port.setDTR(true);
+          await port.setRTS(true);
 
-              port.setPortParameters(
-                115200,
-                UsbPort.DATABITS_8,
-                UsbPort.STOPBITS_1,
-                UsbPort.PARITY_NONE,
-              );
-              port.inputStream?.listen((Uint8List event) {
-                _currentImgBuffer =
-                    Uint8List.fromList(_currentImgBuffer + event);
-                const delimiter = '\nDone...';
-                final delimiterIndex =
-                    String.fromCharCodes(_currentImgBuffer).indexOf(delimiter);
-                if (delimiterIndex != -1) {
-                  final imageData =
-                      _currentImgBuffer.sublist(0, delimiterIndex);
-                  _currentImgBuffer = _currentImgBuffer
-                      .sublist(delimiterIndex + delimiter.length);
+          port.setPortParameters(
+            115200,
+            UsbPort.DATABITS_8,
+            UsbPort.STOPBITS_1,
+            UsbPort.PARITY_NONE,
+          );
 
-                  final image = img.decodeJpg(imageData);
-                  if (image != null) {
-                  showDialog(
-                      // ignore: use_build_context_synchronously
-                      context: context,
-                      builder: (context) {
-                        return AlertDialog(
-                          title:  Text("Image data length: ${imageData.length}"),
-                          content: Image.memory(encodeAsPng(
-                              imageData, image.width, image.height)),
-                        );
-                      }); 
-                    setState(() {
-                      _img = encodeAsPng(imageData, image.width, image.height);
-                    });
-                  } else {
-                    showDialog(
-                      // ignore: use_build_context_synchronously
-                      context: context,
-                      builder: (context) {
-                        return AlertDialog(
-                          title:  Text("Image data length: ${imageData.length}"),
-                          content: Text("Error decoding JPEG image."),
-                        );
-                      }); 
-                  }
+          port.inputStream?.listen((Uint8List event) async {
+            try {
+              _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
+              const delimiter = '\nDone...';
+              final delimiterIndex =
+                  String.fromCharCodes(_currentImgBuffer).indexOf(delimiter);
+
+              if (delimiterIndex != -1) {
+                final imageData = _currentImgBuffer.sublist(0, delimiterIndex);
+
+                _currentImgBuffer = _currentImgBuffer
+                    .sublist(delimiterIndex + delimiter.length);
+
+                final image = img.decodeJpg(imageData);
+
+                if (image != null) {
+                  final detections = await yolo.runObjectDetectionInBackground(
+                      image, _interpreter, labels);
+
+                  setState(() {
+                    _out = '$detections';
+                  });
+                } else {
+                  printDebug('Failed to decode JPEG image');
+                  printDebug('Image data length: ${imageData.length}');
                 }
-              }, onError: (error) {
-                printDebug("Error reading from port: $error");
-              }, onDone: () {
-                printDebug("Port closed");
-              });
-
-              setState(() {
-                _devices = devices.map((e) => e.deviceName).toList();
-              });
-            },
-            child: const Icon(Icons.usb),
-          ),
-          body: Center(
-            child: _img != null ? Image.memory(_img!) : const Text('No image'),
-          ),
-        );
-      },
+              }
+            } catch (e) {
+              printDebug('Error processing image data: $e');
+            }
+          }, onError: (error) {
+            printDebug('Stream read error: $error');
+          }, onDone: () {
+            printDebug('Image stream closed');
+          });
+        },
+        child: const Icon(Icons.usb),
+      ),
+      body: Center(
+        child: _out != null ? Text(_out!) : const Text("No data"),
+      ),
     );
   }
 }
