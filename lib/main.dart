@@ -67,18 +67,15 @@ class _MyHomePageState extends State<MyHomePage> {
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
-      Uint8List? _img;
+  Uint8List? _img;
   StreamSubscription? _gyroscopeSubscription;
 
   @override
   void initState() {
     super.initState();
     _initializeModel();
-     _testInferenceWithStaticImage();
     _initializeGyroscope();
   }
-
-
 
   Future<void> _initializeModel() async {
     setState(() {
@@ -112,41 +109,6 @@ class _MyHomePageState extends State<MyHomePage> {
     _gyroscopeSubscription?.cancel();
     super.dispose();
   }
-
-  Future<void> _testInferenceWithStaticImage() async {
-  // Load the image from assets
-  final imageData = await DefaultAssetBundle.of(context).load('assets/test.jpg');
-  final Uint8List imageBytes = imageData.buffer.asUint8List();
-
-  // Decode the image
-  final image = img.decodeJpg(imageBytes);
-  if (image == null) {
-    print('Failed to decode the image');
-    return;
-  }
-
-  // Run YOLO inference
-  final detectedObjects = await yolo.runObjectDetectionInBackground(
-    image,
-    _interpreter,
-    labels,
-  );
-
-  // Log the results
-  String detectd = '';
-  for (var objectData in detectedObjects) {
-    String label = objectData['className'];
-    List<int> currentBox = objectData['bbox'];
-    detectd += '$label: ${currentBox[0]}, ${currentBox[1]}\n';
-  }
-
-  // Update the UI
-  setState(() {
-    _out = detectd;
-    _img = encodeAsPng(image.buffer.asUint8List(), image.width, image.height);
-  });
-}
-
 
   @override
   Widget build(BuildContext context) {
@@ -204,88 +166,20 @@ class _MyHomePageState extends State<MyHomePage> {
 
                 var image = img.decodeJpg(imageData);
                 if (image != null) {
-                image = img.Image.fromBytes(bytes: image.buffer, height: image.height, width: image.width);
+                  image = img.Image.fromBytes(
+                      bytes: image.buffer,
+                      height: image.height,
+                      width: image.width);
+                  
                   final detectedObjects =
                       await yolo.runObjectDetectionInBackground(
-                          image, _interpreter, labels);
-                  var maxWeight = 'LOW';
-                  priority_manager.PriorityItem? maxObject;
-
-                  var previousFrameObjects = <String, List<double>>{};
-
-                  for (var objectData in detectedObjects) {
-                    String label = objectData['className'];
-                    List<int> currentBox = objectData['bbox'];
-
-                    priority_manager.PriorityItem item =
-                        priority_manager.PriorityItem(
-                      label: label,
-                      isPersonMoving: isPersonMoving,
-                      isObjectMoving: false,
-                      weight: 1.0,
-                      direction: '',
-                    );
-
-                    if (previousFrameObjects
-                        .containsKey(labels[objectData['classIndex']])) {
-                      double previousX =
-                          previousFrameObjects[labels[objectData['classIndex']]]
-                                  ?[0] ??
-                              0.0;
-                      double previousY =
-                          previousFrameObjects[labels[objectData['classIndex']]]
-                                  ?[1] ??
-                              0.0;
-
-                      double dx = currentBox[0] - previousX;
-                      double dy = currentBox[1] - previousY;
-
-                      bool isMoving = (dx.abs() + dy.abs()) > 5;
-                      String direction = '';
-                      if (isMoving) {
-                        if (dx.abs() > dy.abs()) {
-                          direction = dx > 0 ? 'right' : 'left';
-                        } else {
-                          direction = dy > 0 ? 'down' : 'up';
-                        }
-                      }
-                      item.isObjectMoving = isMoving;
-                      item.direction = direction;
-                    }
-
-                    var itemWeight = item.measureWeight();
-                    if (itemWeight == 'HIGH') {
-                      maxWeight = 'HIGH';
-                      maxObject = item;
-                    } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
-                      maxWeight = 'MEDIUM';
-                      maxObject = item;
-                    } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
-                      maxObject ??= item;
-                    }
-                  }
-
-                  String? result;
-                  printDebug("Max weight: $maxWeight");
-                  if (maxObject != null) {
-                    final params = {
-                      'weight': maxObject.measureWeight(),
-                      'nv21Image': image,
-                    };
-                    result = await compute(_performActionInBackground, params);
-                  }
-
-                  String detectd = '';
-                  for (var objectData in detectedObjects.getRange(0, 10)) {
-                    String label = objectData['className'];
-                    List<int> currentBox = objectData['bbox'];
-                    detectd += '$label: ${currentBox[0]}, ${currentBox[1]}\n';
-                  }
-                
+                          image, _interpreter, labels, context);
+                  
                   setState(() {
                     _out =
-                        '\n $maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n ${detectd} \n $result';
-                    _img = encodeAsPng(image!.buffer.asUint8List(), image.width, image.height);
+                        '\n $detectedObjects';
+                    _img = encodeAsPng(
+                        image!.buffer.asUint8List(), image.width, image.height);
                   });
                 } else {
                   printDebug('Failed to decode JPEG image');
@@ -293,7 +187,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 }
               }
             } catch (e) {
-              printDebug('Error processing image data: $e');
+              printDebug('Error: $e');
             }
           }, onError: (error) {
             printDebug('Stream read error: $error');

@@ -2,6 +2,7 @@
 import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
@@ -23,7 +24,8 @@ Future<OrtSession> loadModel() async {
 }
 
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    imglib.Image image, OrtSession interpreter, List<String> labels) async {
+    imglib.Image image, OrtSession interpreter, List<String> labels, context) async {
+  try {
   final result = await _detectObjects(
       await compute(_processImageForDetection, [
         image,
@@ -32,10 +34,14 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
       ]),
       interpreter);
 
-  final detections =
-      postprocessor(result!, [image.width, image.height], 0.6, 0.6, 640, 640);
+  final detections = postprocessor(
+      result!, [image.width, image.height], 0.6, 0.6, 640, 640, labels);
 
   return detections;
+    } catch (e) {
+      showAboutDialog(context: context, children: [Text(e.toString())]);
+      return [];
+    }
 }
 
 List<int> nms(List<List<int>> boxes, List<double> scores, double confidence,
@@ -74,15 +80,16 @@ double computeIoU(List<int> box1, List<int> box2) {
 List<List<double>> transposeMatrix(List<List<double>> matrix) {
   int rows = matrix.length;
   int cols = matrix[0].length;
-  
-  List<List<double>> transposed = List.generate(cols, (_) => List<double>.filled(rows, 0));
-  
+
+  List<List<double>> transposed =
+      List.generate(cols, (_) => List<double>.filled(rows, 0));
+
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < cols; j++) {
       transposed[j][i] = matrix[i][j];
     }
   }
-  
+
   return transposed;
 }
 
@@ -92,7 +99,8 @@ List<Map<String, dynamic>> postprocessor(
     double confidence,
     double iouThreshold,
     int inputWidth,
-    int inputHeight) {
+    int inputHeight,
+    List<String>? labels) {
   int imgHeight = frameShape[0];
   int imgWidth = frameShape[1];
 
@@ -102,7 +110,8 @@ List<Map<String, dynamic>> postprocessor(
   List<List<int>> boxes = [];
   List<double> scores = [];
   List<int> classIds = [];
-  final c = transposeMatrix((results[0] as OrtValueTensor).value[0] as List<List<double>>);
+  final c = transposeMatrix(
+      (results[0] as OrtValueTensor).value[0] as List<List<double>>);
   printDebug(c.shape);
   for (var output in c) {
     double maxScore = output
@@ -131,14 +140,10 @@ List<Map<String, dynamic>> postprocessor(
   printDebug(classIds);
   List<Map<String, dynamic>> objects = indices.map((i) {
     return {
-      'classId': classIds[i],
+      'classIndex': classIds[i],
       'confidence': scores[i],
-      'box': {
-        'left': boxes[i][0],
-        'top': boxes[i][1],
-        'width': boxes[i][2],
-        'height': boxes[i][3],
-      }
+      'bbox': boxes[i],
+      'className': labels![classIds[i]]
     };
   }).toList();
 
