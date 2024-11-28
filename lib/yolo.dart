@@ -71,6 +71,21 @@ double computeIoU(List<int> box1, List<int> box2) {
   return unionArea > 0 ? intersection / unionArea : 0.0;
 }
 
+List<List<double>> transposeMatrix(List<List<double>> matrix) {
+  int rows = matrix.length;
+  int cols = matrix[0].length;
+  
+  List<List<double>> transposed = List.generate(cols, (_) => List<double>.filled(rows, 0));
+  
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      transposed[j][i] = matrix[i][j];
+    }
+  }
+  
+  return transposed;
+}
+
 List<Map<String, dynamic>> postprocessor(
     List<OrtValue?> results,
     List<int> frameShape,
@@ -87,7 +102,7 @@ List<Map<String, dynamic>> postprocessor(
   List<List<int>> boxes = [];
   List<double> scores = [];
   List<int> classIds = [];
-  final c = (results[0] as OrtValueTensor).value[0] as List<List<double>>;
+  final c = transposeMatrix((results[0] as OrtValueTensor).value[0] as List<List<double>>);
   printDebug(c.shape);
   for (var output in c) {
     double maxScore = output
@@ -113,9 +128,7 @@ List<Map<String, dynamic>> postprocessor(
   }
 
   List<int> indices = nms(boxes, scores, confidence, iouThreshold);
-  printDebug(scores);
   printDebug(classIds);
-  printDebug(boxes);
   List<Map<String, dynamic>> objects = indices.map((i) {
     return {
       'classId': classIds[i],
