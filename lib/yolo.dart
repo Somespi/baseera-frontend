@@ -3,8 +3,9 @@ import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
+import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:yuv_converter/yuv_converter.dart';
 
 import 'help_utilities.dart';
@@ -13,25 +14,22 @@ Future<List<String>> loadLabels() async {
   return (await rootBundle.loadString("assets/models/labels.txt")).split('\n');
 }
 
-Future<Interpreter> loadModel() async {
-  const assetFileName = 'assets/models/yolov5.tflite';
-  try {
-    final options = InterpreterOptions()..useNnApiForAndroid = true;
-    options.threads = 4;
-    return Interpreter.fromAsset(assetFileName, options: options);
-  } catch (nnapiError) {
-    debugPrint("NNAPI also failed: $nnapiError. Falling back to CPU.");
-    return Interpreter.fromAsset(assetFileName);
-  }
+Future<OrtSession> loadModel() async {
+  final sessionOptions = OrtSessionOptions();
+  const assetFileName = 'assets/models/yolo_model.onnx';
+  final rawAssetFile = await rootBundle.load(assetFileName);
+  final bytes = rawAssetFile.buffer.asUint8List();
+  return OrtSession.fromBuffer(bytes, sessionOptions);
 }
 
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    imglib.Image image, Interpreter interpreter, List<String> labels) async {
-  final inputDetails = interpreter.getInputTensors();
-  final outputDetails = interpreter.getOutputTensors();
+    imglib.Image image, OrtSession interpreter, List<String> labels) async {
   final result = await _detectObjects(
-      await compute(_processImageForDetection,
-          [image, inputDetails[0].shape, outputDetails[0].shape]),
+      await compute(_processImageForDetection, [
+        image,
+        [1, 3, 640, 640],
+        [1, 84, 8400]
+      ]),
       interpreter);
 
   final detections =
@@ -82,12 +80,25 @@ List<Map<String, dynamic>> processOutputs(
 }
 
 Future<List<List<List<dynamic>>>> _detectObjects(
-    List<dynamic> inout, Interpreter interpreter) async {
-  if (inout[0] == null) throw Exception("Input tensor is null.");
-  List<List<List<dynamic>>> out = List<num>.filled(1 * 6300 * 85, 0)
-      .reshape([1, 6300, 85]) as List<List<List<dynamic>>>;
-  interpreter.run(inout[0], out);
-  return out;
+    List<dynamic> inout, OrtSession interpreter) async {
+  if (inout.isEmpty || inout[0] == null) {
+    throw ArgumentError("Input tensor is invalid or null.");
+  }
+
+  final inputOrt =
+      OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
+  final inputs = {'input': inputOrt};
+  final runOptions = OrtRunOptions();
+
+  try {
+    final outputs = await interpreter.runAsync(runOptions, inputs);
+    return outputs!
+        .map((output) => output!.value as List<List<dynamic>>)
+        .toList();
+  } finally {
+    inputOrt.release();
+    runOptions.release();
+  }
 }
 
 Future<List> _processImageForDetection(dynamic message) async {

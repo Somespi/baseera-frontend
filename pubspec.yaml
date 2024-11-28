@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
   camerawesome: ^2.0.0-dev.1
-  onnxruntime: 1.4.1
   yuv_converter: ^0.0.2
   tflite_flutter: ^0.11.0
 
@@ -52,6 +51,7 @@ dependencies:
   bluetooth_classic: ^0.0.2
   serialport_plus: ^0.1.0
   usb_serial: ^0.5.2
+  onnxruntime: ^1.4.1
 
 dev_dependencies:
   flutter_test:
@@ -108,6 +108,7 @@ flutter:
   assets:
     - assets/models/yolov10n_float32.tflite
     - assets/models/labels.txt
+    - assets/models/yolo_model.onnx
     - assets/models/mobilenet_ssd_v2_coco_quant_postprocess.tflite
     - assets/models/yolov5.tflite
     - assets/test.jpg

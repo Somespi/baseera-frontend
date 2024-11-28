@@ -6,7 +6,7 @@ import 'package:serialport_plus/serialport_plus.dart';
 import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:onnxruntime/onnxruntime.dart';
 import 'package:usb_serial/usb_serial.dart';
 import 'help_utilities.dart';
 import 'yolo.dart' as yolo;
@@ -15,6 +15,7 @@ import 'priority_manager.dart' as priority_manager;
 late List<String> labels;
 
 void main() async {
+  OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
   labels = await yolo.loadLabels();
 
@@ -61,7 +62,7 @@ Uint8List encodeAsPng(Uint8List rawData, int width, int height) {
 
 class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = false;
-  late Interpreter _interpreter;
+  late OrtSession _interpreter;
   // ignore: unused_field
   UsbPort? _port;
   String? _out;
@@ -86,7 +87,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     _interpreter = await yolo.loadModel();
-    _interpreter.allocateTensors();
 
     setState(() {
       _isLoading = false;
@@ -107,7 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() async {
-    _interpreter.close();
+    _interpreter.release();
     await _serialportFlutterPlugin.close();
     await _port?.close();
     _gyroscopeSubscription?.cancel();
