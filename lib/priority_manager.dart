@@ -43,7 +43,7 @@ class PriorityItem {
     if (labelDistances.containsKey(label)) {
       if (isPersonMoving && isObjectMoving && getOutmostDistance(label) <= 5) {
         return 'HIGH';
-      } else if (isPersonMoving && getOutmostDistance(label) <= 5) {
+      } else if (getOutmostDistance(label) <= 5) {
         return 'HIGH';
       } else if ((isPersonMoving || isObjectMoving) &&
           getOutmostDistance(label) <= 10) {

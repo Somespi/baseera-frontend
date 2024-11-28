@@ -174,12 +174,79 @@ class _MyHomePageState extends State<MyHomePage> {
                   final detectedObjects =
                       await yolo.runObjectDetectionInBackground(
                           image, _interpreter, labels, context);
+                   var maxWeight = 'LOW';
+                  priority_manager.PriorityItem? maxObject;
+
+                  var previousFrameObjects = <String, List<double>>{};
+
+                  for (var objectData in detectedObjects) {
+                    String label = objectData['className'];
+                    List<int> currentBox = objectData['bbox'];
+
+                    priority_manager.PriorityItem item =
+                        priority_manager.PriorityItem(
+                      label: label,
+                      isPersonMoving: isPersonMoving,
+                      isObjectMoving: false,
+                      weight: 1.0,
+                      direction: '',
+                    );
+
+                    if (previousFrameObjects
+                        .containsKey(labels[objectData['classIndex']])) {
+                      double previousX =
+                          previousFrameObjects[labels[objectData['classIndex']]]
+                                  ?[0] ??
+                              0.0;
+                      double previousY =
+                          previousFrameObjects[labels[objectData['classIndex']]]
+                                  ?[1] ??
+                              0.0;
+
+                      double dx = currentBox[0] - previousX;
+                      double dy = currentBox[1] - previousY;
+
+                      bool isMoving = (dx.abs() + dy.abs()) > 5;
+                      String direction = '';
+                      if (isMoving) {
+                        if (dx.abs() > dy.abs()) {
+                          direction = dx > 0 ? 'right' : 'left';
+                        } else {
+                          direction = dy > 0 ? 'down' : 'up';
+                        }
+                      }
+                      item.isObjectMoving = isMoving;
+                      item.direction = direction;
+                    }
+
+                    var itemWeight = item.measureWeight();
+                    if (itemWeight == 'HIGH') {
+                      maxWeight = 'HIGH';
+                      maxObject = item;
+                    } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
+                      maxWeight = 'MEDIUM';
+                      maxObject = item;
+                    } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
+                      maxObject ??= item;
+                    }
+                  }
+
+                  String? result;
+                  printDebug("Max weight: $maxWeight");
+                  if (maxObject != null) {
+                    final params = {
+                      'weight': maxObject.measureWeight(),
+                      'nv21Image': image,
+                    };
+                    result = await compute(_performActionInBackground, params);
+                  }
+
                   
+                
                   setState(() {
                     _out =
-                        '\n $detectedObjects';
-                    _img = encodeAsPng(
-                        image!.buffer.asUint8List(), image.width, image.height);
+                        '\n $maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
+                    _img = encodeAsPng(image!.buffer.asUint8List(), image.width, image.height);
                   });
                 } else {
                   printDebug('Failed to decode JPEG image');

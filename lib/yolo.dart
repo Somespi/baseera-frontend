@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:yuv_converter/yuv_converter.dart';
 
 import 'help_utilities.dart';
 
