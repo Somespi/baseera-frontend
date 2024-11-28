@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
-import 'dart:typed_data';
 import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:onnxruntime/onnxruntime.dart';
@@ -76,6 +74,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     _initializeModel();
+     _testInferenceWithStaticImage();
     _initializeGyroscope();
   }
 
@@ -113,6 +112,41 @@ class _MyHomePageState extends State<MyHomePage> {
     _gyroscopeSubscription?.cancel();
     super.dispose();
   }
+
+  Future<void> _testInferenceWithStaticImage() async {
+  // Load the image from assets
+  final imageData = await DefaultAssetBundle.of(context).load('assets/test.jpg');
+  final Uint8List imageBytes = imageData.buffer.asUint8List();
+
+  // Decode the image
+  final image = img.decodeJpg(imageBytes);
+  if (image == null) {
+    print('Failed to decode the image');
+    return;
+  }
+
+  // Run YOLO inference
+  final detectedObjects = await yolo.runObjectDetectionInBackground(
+    image,
+    _interpreter,
+    labels,
+  );
+
+  // Log the results
+  String detectd = '';
+  for (var objectData in detectedObjects) {
+    String label = objectData['className'];
+    List<int> currentBox = objectData['bbox'];
+    detectd += '$label: ${currentBox[0]}, ${currentBox[1]}\n';
+  }
+
+  // Update the UI
+  setState(() {
+    _out = detectd;
+    _img = encodeAsPng(image.buffer.asUint8List(), image.width, image.height);
+  });
+}
+
 
   @override
   Widget build(BuildContext context) {

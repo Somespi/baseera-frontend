@@ -33,53 +33,106 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
       interpreter);
 
   final detections =
-      processOutputs(result[0], image.width, image.height, labels, 0.6, 0.6);
+      postprocessor(result!, [image.width, image.height], 0.6, 0.6, 640, 640);
 
   return detections;
 }
 
-List<Map<String, dynamic>> processOutputs(
-    List<List<dynamic>> output,
-    int imgWidth,
-    int imgHeight,
-    List<String> labels,
-    double boxThreshold,
-    double classThreshold) {
-  List<Map<String, dynamic>> detections = [];
-  List<List<double>> outputs = output.cast<List<double>>();
-  for (final output in outputs) {
-    final boxConfidence = output[4];
-    if (boxConfidence < boxThreshold) continue;
+List<int> nms(List<List<int>> boxes, List<double> scores, double confidence,
+    double iouThreshold) {
+  List<int> indices = [];
+  List<int> sortedIndices = List.generate(scores.length, (i) => i);
+  sortedIndices.sort((a, b) => scores[b].compareTo(scores[a]));
 
-    final classProbs = output.sublist(5);
-    final classIndex = classProbs.indexOf(classProbs.reduce(max));
-    final classProb = classProbs[classIndex];
+  while (sortedIndices.isNotEmpty) {
+    int bestIdx = sortedIndices.removeAt(0);
+    indices.add(bestIdx);
 
-    if (classProb < classThreshold) continue;
-
-    final x = (output[0] * imgWidth - output[2] * imgWidth / 2).round();
-    final y = (output[1] * imgHeight - output[3] * imgHeight / 2).round();
-    final w = (output[2] * imgWidth).round();
-    final h = (output[3] * imgHeight).round();
-
-    final conf = classProb * boxConfidence;
-
-    if (conf < classThreshold) continue;
-
-    detections.add({
-      'bbox': [x, y, w, h],
-      'classIndex': classIndex,
-      'className': labels[classIndex],
-      'confidence': conf,
+    sortedIndices.removeWhere((idx) {
+      double iou = computeIoU(boxes[bestIdx], boxes[idx]);
+      return iou > iouThreshold;
     });
   }
-  detections.removeWhere(
-      (detection) => detection['bbox'][2] < 5 || detection['bbox'][3] < 5);
 
-  return applyNMS(detections, 0.6);
+  return indices;
 }
 
-Future<List<List<List<dynamic>>>> _detectObjects(
+double computeIoU(List<int> box1, List<int> box2) {
+  int x1 = max(box1[0], box2[0]);
+  int y1 = max(box1[1], box2[1]);
+  int x2 = min(box1[0] + box1[2], box2[0] + box2[2]);
+  int y2 = min(box1[1] + box1[3], box2[1] + box2[3]);
+
+  int intersection = max(0, x2 - x1) * max(0, y2 - y1);
+  int box1Area = box1[2] * box1[3];
+  int box2Area = box2[2] * box2[3];
+  int unionArea = box1Area + box2Area - intersection;
+
+  return unionArea > 0 ? intersection / unionArea : 0.0;
+}
+
+List<Map<String, dynamic>> postprocessor(
+    List<OrtValue?> results,
+    List<int> frameShape,
+    double confidence,
+    double iouThreshold,
+    int inputWidth,
+    int inputHeight) {
+  int imgHeight = frameShape[0];
+  int imgWidth = frameShape[1];
+
+  double xFactor = imgWidth / inputWidth;
+  double yFactor = imgHeight / inputHeight;
+
+  List<List<int>> boxes = [];
+  List<double> scores = [];
+  List<int> classIds = [];
+  final c = (results[0] as OrtValueTensor).value[0] as List<List<double>>;
+  printDebug(c.shape);
+  for (var output in c) {
+    double maxScore = output
+        .skip(4)
+        .fold<double>(-double.infinity, (prev, current) => max(prev, current));
+    if (maxScore >= confidence) {
+      int classId = output.skip(4).toList().indexOf(maxScore);
+      printDebug(output);
+      double x = output[0];
+      double y = output[1];
+      double w = output[2];
+      double h = output[3];
+
+      int left = ((x - w / 2) * xFactor).toInt();
+      int top = ((y - h / 2) * yFactor).toInt();
+      int width = (w * xFactor).toInt();
+      int height = (h * yFactor).toInt();
+
+      classIds.add(classId);
+      scores.add(maxScore);
+      boxes.add([left, top, width, height]);
+    }
+  }
+
+  List<int> indices = nms(boxes, scores, confidence, iouThreshold);
+  printDebug(scores);
+  printDebug(classIds);
+  printDebug(boxes);
+  List<Map<String, dynamic>> objects = indices.map((i) {
+    return {
+      'classId': classIds[i],
+      'confidence': scores[i],
+      'box': {
+        'left': boxes[i][0],
+        'top': boxes[i][1],
+        'width': boxes[i][2],
+        'height': boxes[i][3],
+      }
+    };
+  }).toList();
+
+  return objects;
+}
+
+Future<List<OrtValue?>?> _detectObjects(
     List<dynamic> inout, OrtSession interpreter) async {
   if (inout.isEmpty || inout[0] == null) {
     throw ArgumentError("Input tensor is invalid or null.");
@@ -87,14 +140,12 @@ Future<List<List<List<dynamic>>>> _detectObjects(
 
   final inputOrt =
       OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
-  final inputs = {'input': inputOrt};
+  final inputs = {'images': inputOrt};
   final runOptions = OrtRunOptions();
 
   try {
     final outputs = await interpreter.runAsync(runOptions, inputs);
-    return outputs!
-        .map((output) => output!.value as List<List<dynamic>>)
-        .toList();
+    return outputs;
   } finally {
     inputOrt.release();
     runOptions.release();
@@ -106,24 +157,36 @@ Future<List> _processImageForDetection(dynamic message) async {
     final imglib.Image img = message[0];
 
     final resizedImage =
-        imglib.copyResize(img, width: message[1][2], height: message[1][1]);
+        imglib.copyResize(img, width: message[1][3], height: message[1][2]);
 
-    var dat = resizedImage.data!.buffer.asUint8List();
-    final normalizedPixels = List.generate(dat.length ~/ 3,
-            (i) => [dat[i * 3], dat[i * 3 + 1], dat[i * 3 + 2]])
+    final normalizedPixels = resizedImage.data
+        ?.map((pixel) {
+          final r = ((pixel.r as int) & 0xFF) / 255.0;
+          final g = (((pixel.b as int) >> 8) & 0xFF) / 255.0;
+          final b = (((pixel.g as int) >> 16) & 0xFF) / 255.0;
+          return [r, g, b];
+        })
         .expand((rgb) => rgb)
         .toList();
 
-    var inputImage = Uint8List.fromList(normalizedPixels).reshape(message[1]);
+    final channels = 3;
+    final height = 640;
+    final width = 640;
+    final transposed = List.generate(channels, (channel) {
+      return List.generate(height, (y) {
+        return List.generate(width, (x) {
+          return normalizedPixels![
+              y * width * channels + x * channels + channel];
+        });
+      });
+    });
 
-    var shape = 1;
-    for (var m in message[2]) {
-      shape *= m as int;
-    }
-
-    var outputs = List.filled(shape, 0).reshape(message[2]);
-
-    return [inputImage, outputs];
+    final floatData = transposed.expand((c) => c.expand((r) => r)).toList();
+    final float32Data = Float32List.fromList(floatData);
+    return [
+      float32Data.buffer.asFloat32List(),
+      [1]
+    ];
   } catch (e) {
     printDebug("Error during image processing: $e");
     return [];
@@ -145,20 +208,6 @@ List<Map<String, dynamic>> applyNMS(
   }
 
   return nmsDetections;
-}
-
-double computeIoU(List<int> boxA, List<int> boxB) {
-  final xA = max(boxA[0], boxB[0]);
-  final yA = max(boxA[1], boxB[1]);
-  final xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2]);
-  final yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3]);
-
-  final intersectionArea = max(0, xB - xA + 1) * max(0, yB - yA + 1);
-
-  final boxAArea = boxA[2] * boxA[3];
-  final boxBArea = boxB[2] * boxB[3];
-
-  return intersectionArea / (boxAArea + boxBArea - intersectionArea);
 }
 
 imglib.Image fromJpegToImg(JpegImage image) {
