@@ -35,7 +35,7 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
       interpreter);
 
   final detections = postprocessor(
-      result!, [image.width, image.height], 0.6, 0.6, 640, 640, labels);
+      result!, [image.width, image.height], 0.35, 0.35, 640, 640, labels);
 
   return detections;
     } catch (e) {
