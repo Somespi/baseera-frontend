@@ -21,11 +21,11 @@ void main() async {
   runApp(const MyApp());
 }
 
-Future<void> _performActionInBackground(Map<String, dynamic> params) async {
+Future<String?> _performActionInBackground(Map<String, dynamic> params) async {
   final weight = params['weight'];
   final nv21Image = params['nv21Image'];
 
-  await priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
+  return await priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
 }
 
 class MyApp extends StatelessWidget {
@@ -90,7 +90,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _initializeGyroscope() {
-    const movementThreshold = 0.3;
+    const movementThreshold = 0.2;
     _gyroscopeSubscription =
         gyroscopeEventStream().listen((GyroscopeEvent event) {
       final magnitude =
@@ -223,16 +223,24 @@ class _MyHomePageState extends State<MyHomePage> {
                       maxObject ??= item;
                     }
                   }
+
+                  String? result;
                   printDebug("Max weight: $maxWeight");
                   if (maxObject != null) {
                     final params = {
                       'weight': maxObject.measureWeight(),
                       'nv21Image': image,
                     };
-                    await compute(_performActionInBackground, params);
+                    result = await compute(_performActionInBackground, params);
+                  }
+
+                  String detection = '';
+                  for (var objectData in detectedObjects) {
+                    String label = objectData['className'];
+                    detection += '$label: ${objectData['confidence']}\n';
                   }
                   setState(() {
-                    _out = '$detectedObjects';
+                    _out = '$maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $detection \n $result';
                   });
                 } else {
                   printDebug('Failed to decode JPEG image');

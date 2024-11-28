@@ -8,7 +8,7 @@ import 'vqa.dart';
 
 class PriorityItem {
   static const Map<String, double> labelDistances = {
-    'person': 5,
+    'person': 10,
     'car': 25,
     'bus': 30,
     'motorcycle': 15,
@@ -43,6 +43,8 @@ class PriorityItem {
     if (labelDistances.containsKey(label)) {
       if (isPersonMoving && isObjectMoving && getOutmostDistance(label) <= 5) {
         return 'HIGH';
+      } else if (isPersonMoving && getOutmostDistance(label) <= 5) {
+        return 'HIGH';
       } else if ((isPersonMoving || isObjectMoving) &&
           getOutmostDistance(label) <= 10) {
         return 'MEDIUM';
@@ -55,14 +57,15 @@ class PriorityItem {
 
 
   
-  static Future<void> performStaticAction(String weight, Image frame) async {
+  static Future<String?> performStaticAction(String weight, Image frame) async {
     printDebug("Performing action with weight $weight");
     if (weight == 'HIGH') {
       final caption = await VQA().caption(frame);
-      printDebug(caption);
+      return (caption);
 
     } else if (weight == 'MEDIUM') {
       // Perform medium priority action
     }
+    return null;
   }
 }

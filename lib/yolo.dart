@@ -64,17 +64,21 @@ List<Map<String, dynamic>> processOutputs(
     final w = (output[2] * imgWidth).round();
     final h = (output[3] * imgHeight).round();
 
+    final conf = classProb * boxConfidence;
+
+    if (conf < classThreshold) continue;
+
     detections.add({
       'bbox': [x, y, w, h],
       'classIndex': classIndex,
       'className': labels[classIndex],
-      'confidence': classProb,
+      'confidence': conf,
     });
   }
   detections.removeWhere(
       (detection) => detection['bbox'][2] < 5 || detection['bbox'][3] < 5);
 
-  return applyNMS(detections, 0.5);
+  return applyNMS(detections, 0.6);
 }
 
 Future<List<List<List<dynamic>>>> _detectObjects(
