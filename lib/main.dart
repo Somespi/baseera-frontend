@@ -25,7 +25,8 @@ Future<String?> _performActionInBackground(Map<String, dynamic> params) async {
   final weight = params['weight'];
   final nv21Image = params['nv21Image'];
 
-  return await priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
+  return await priority_manager.PriorityItem.performStaticAction(
+      weight, nv21Image);
 }
 
 class MyApp extends StatelessWidget {
@@ -67,6 +68,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
+      Uint8List? _img;
   StreamSubscription? _gyroscopeSubscription;
 
   @override
@@ -75,6 +77,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _initializeModel();
     _initializeGyroscope();
   }
+
+
 
   Future<void> _initializeModel() async {
     setState(() {
@@ -164,11 +168,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 _currentImgBuffer = _currentImgBuffer
                     .sublist(delimiterIndex + delimiter.length);
 
-                final image = img.decodeJpg(imageData);
-
+                var image = img.decodeJpg(imageData);
                 if (image != null) {
-                  final detectedObjects = await yolo.runObjectDetectionInBackground(
-                      image, _interpreter, labels);
+                image = img.Image.fromBytes(bytes: image.buffer, height: image.height, width: image.width);
+                  final detectedObjects =
+                      await yolo.runObjectDetectionInBackground(
+                          image, _interpreter, labels);
                   var maxWeight = 'LOW';
                   priority_manager.PriorityItem? maxObject;
 
@@ -189,12 +194,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
                     if (previousFrameObjects
                         .containsKey(labels[objectData['classIndex']])) {
-                      double previousX = previousFrameObjects[
-                              labels[objectData['classIndex']]]?[0] ??
-                          0.0;
-                      double previousY = previousFrameObjects[
-                              labels[objectData['classIndex']]]?[1] ??
-                          0.0;
+                      double previousX =
+                          previousFrameObjects[labels[objectData['classIndex']]]
+                                  ?[0] ??
+                              0.0;
+                      double previousY =
+                          previousFrameObjects[labels[objectData['classIndex']]]
+                                  ?[1] ??
+                              0.0;
 
                       double dx = currentBox[0] - previousX;
                       double dy = currentBox[1] - previousY;
@@ -234,13 +241,17 @@ class _MyHomePageState extends State<MyHomePage> {
                     result = await compute(_performActionInBackground, params);
                   }
 
-                  String detection = '';
-                  for (var objectData in detectedObjects) {
+                  String detectd = '';
+                  for (var objectData in detectedObjects.getRange(0, 10)) {
                     String label = objectData['className'];
-                    detection += '$label: ${objectData['confidence']}\n';
+                    List<int> currentBox = objectData['bbox'];
+                    detectd += '$label: ${currentBox[0]}, ${currentBox[1]}\n';
                   }
+                
                   setState(() {
-                    _out = '$maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $detection \n $result';
+                    _out =
+                        '\n $maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n ${detectd} \n $result';
+                    _img = encodeAsPng(image!.buffer.asUint8List(), image.width, image.height);
                   });
                 } else {
                   printDebug('Failed to decode JPEG image');
@@ -259,8 +270,10 @@ class _MyHomePageState extends State<MyHomePage> {
         child: const Icon(Icons.usb),
       ),
       body: Center(
-        child: _out != null ? Text(_out!) : const Text("No data"),
-      ),
+          child: Column(children: [
+        _out != null ? Text(_out!) : const Text("No data"),
+        _img != null ? Image.memory(_img!) : const Text("No image"),
+      ])),
     );
   }
 }

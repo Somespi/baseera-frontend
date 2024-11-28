@@ -110,3 +110,4 @@ flutter:
     - assets/models/labels.txt
     - assets/models/mobilenet_ssd_v2_coco_quant_postprocess.tflite
     - assets/models/yolov5.tflite
+    - assets/test.jpg
