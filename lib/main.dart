@@ -20,6 +20,18 @@ void main() async {
   runApp(const MyApp());
 }
 
+/// Performs a static action in the background using the provided parameters.
+///
+/// This function takes a map of parameters, extracts the 'weight' and 'nv21Image',
+/// and uses them to perform a static action through the `PriorityItem` class in
+/// the `priority_manager` package. The action is executed asynchronously in the
+/// background, and the result is returned as a `Future<String?>`.
+///
+/// - Parameters:
+///   - params: A map containing the parameters 'weight' and 'nv21Image' required
+///             to perform the action.
+///
+/// - Returns: A `Future<String?>` containing the result of the action.
 Future<String?> _performActionInBackground(Map<String, dynamic> params) async {
   final weight = params['weight'];
   final nv21Image = params['nv21Image'];
@@ -71,12 +83,25 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription? _gyroscopeSubscription;
 
   @override
+  /// Initializes the object detection model and starts listening to the
+  /// gyroscope.
+  ///
+  /// This function is called when the widget is inserted into the tree.
+  /// It loads the model and starts listening to the gyroscope event stream.
   void initState() {
     super.initState();
     _initializeModel();
     _initializeGyroscope();
   }
 
+  /// Initializes the object detection model.
+  ///
+  /// This function loads the model from a file and assigns it to the
+  /// [_interpreter] field. It also sets the [_isLoading] field to true
+  /// while the model is loading, and false when it is finished.
+  ///
+  /// The model is loaded in a separate isolate, so that it does not block
+  /// the main thread.
   Future<void> _initializeModel() async {
     setState(() {
       _isLoading = false;
@@ -89,6 +114,15 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Listens to the gyroscope event stream and updates the [_isPersonMoving]
+  /// state variable accordingly.
+  ///
+  /// The [_isPersonMoving] state variable is set to true if the device is
+  /// moving (i.e., the magnitude of the gyroscope reading is greater than the
+  /// [movementThreshold], and false otherwise.
+  ///
+  /// The [movementThreshold] is set to 0.2, which is a reasonable value for
+  /// most devices.
   void _initializeGyroscope() {
     const movementThreshold = 0.2;
     _gyroscopeSubscription =
@@ -111,6 +145,19 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
+  /// Builds the main home page widget.
+  ///
+  /// This widget displays a floating action button that reads data from the
+  /// serial port and runs object detection on the received images. The
+  /// results of the object detection are displayed in the center of the
+  /// screen.
+  ///
+  /// The widget also displays a spinner while the model is being loaded.
+  ///
+  /// The widget listens to the gyroscope data stream and sets the
+  /// [isPersonMoving] flag to true if the magnitude of the gyroscope data
+  /// exceeds a certain threshold. This flag is used to determine the weight
+  /// of the detected objects.
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(

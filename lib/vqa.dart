@@ -9,6 +9,14 @@ class VQA {
     apiKey: apiKey,
   );
 
+  /// Asks a question about the given image and returns the answer.
+  ///
+  /// The answer is limited to 30 words and is generated using the Gemini AI model.
+  ///
+  /// The prompt used to generate the answer is:
+  /// "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC."
+  ///
+  /// The function returns null if the AI model fails to generate an answer.
   Future<String?> ask(String question, imglib.Image image) async {
     final prompt =
         "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC.";

@@ -1,4 +1,3 @@
-// yolo_functions.dart
 import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
@@ -7,13 +6,29 @@ import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
 import 'package:tflite_flutter/tflite_flutter.dart';
-
 import 'help_utilities.dart';
 
+/// Loads the COCO labels from the assets/models/labels.txt file.
+///
+/// The file contains a newline-separated list of object class labels,
+/// which are used to describe the objects detected in an image.
+///
+/// The function returns a List of Strings, where each string is a label.
+///
+/// The list will be empty if the file does not exist or if there is an error
+/// reading the file.
 Future<List<String>> loadLabels() async {
   return (await rootBundle.loadString("assets/models/labels.txt")).split('\n');
 }
 
+/// Loads the YOLO model from the specified ONNX file in the assets directory.
+///
+/// This function reads the YOLO model file as a byte buffer and creates an
+/// OrtSession using these bytes along with default session options. The session
+/// is used for running object detection.
+///
+/// Returns a [Future] that resolves to an [OrtSession] initialized with the
+/// model's data.
 Future<OrtSession> loadModel() async {
   final sessionOptions = OrtSessionOptions();
   const assetFileName = 'assets/models/yolo_model.onnx';
@@ -22,6 +37,24 @@ Future<OrtSession> loadModel() async {
   return OrtSession.fromBuffer(bytes, sessionOptions);
 }
 
+/// Runs object detection on the provided image in the background.
+///
+/// This function processes the image and applies the YOLO model using the given
+/// `interpreter` and `labels` to detect objects. It returns a list of detected
+/// objects with their properties such as bounding boxes and class names.
+///
+/// The function uses a predefined input size and thresholds for confidence and
+/// IoU during detection. If an error occurs during the processing, it displays
+/// an error dialog and returns an empty list.
+///
+/// - Parameters:
+///   - image: The image to be analyzed for object detection.
+///   - interpreter: The OrtSession used for running the YOLO model.
+///   - labels: A list of labels representing the classes the model can detect.
+///   - context: The BuildContext used for displaying error dialogs.
+///
+/// - Returns: A `Future` that resolves to a list of maps, where each map
+///   contains details about a detected object.
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
     imglib.Image image, OrtSession interpreter, List<String> labels, context) async {
   try {
@@ -43,6 +76,28 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
     }
 }
 
+/// Non-Maximum Suppression algorithm for object detection.
+///
+/// This function takes the list of detected bounding boxes and their
+/// corresponding scores and applies non-maximum suppression to them.
+///
+/// The function sorts the boxes by their scores in descending order and then
+/// iterates through the sorted list. For each box, it removes all the boxes
+/// that have an IoU greater than the specified threshold with the current
+/// box. The indices of the remaining boxes are returned as the output.
+///
+/// - Parameters:
+///   - boxes: A list of lists of integers, where each sublist contains the
+///     coordinates and dimensions of a bounding box in the format [x, y, w, h].
+///   - scores: A list of doubles, where each double represents the score of a
+///     bounding box.
+///   - confidence: A double that represents the minimum score for a bounding box
+///     to be considered a valid detection.
+///   - iouThreshold: A double that represents the IoU threshold for two boxes
+///     to be considered overlapping.
+///
+/// - Returns: A list of integers, where each integer is the index of a valid
+///   bounding box in the input lists.
 List<int> nms(List<List<int>> boxes, List<double> scores, double confidence,
     double iouThreshold) {
   List<int> indices = [];
@@ -62,6 +117,20 @@ List<int> nms(List<List<int>> boxes, List<double> scores, double confidence,
   return indices;
 }
 
+/// Computes the Intersection over Union (IoU) of two bounding boxes.
+///
+/// This function calculates the IoU metric, which is a measure of the overlap
+/// between two bounding boxes. The IoU is defined as the area of the 
+/// intersection divided by the area of the union of the two boxes.
+///
+/// - Parameters:
+///   - box1: A list of integers representing the first bounding box
+///     in the format [x, y, width, height].
+///   - box2: A list of integers representing the second bounding box
+///     in the format [x, y, width, height].
+///
+/// - Returns: A double value representing the IoU of the two bounding boxes,
+///   ranging from 0.0 (no overlap) to 1.0 (perfect overlap).
 double computeIoU(List<int> box1, List<int> box2) {
   int x1 = max(box1[0], box2[0]);
   int y1 = max(box1[1], box2[1]);
@@ -92,6 +161,39 @@ List<List<double>> transposeMatrix(List<List<double>> matrix) {
   return transposed;
 }
 
+/// Runs postprocessing on the output of the YOLO model.
+///
+/// The postprocessor takes the output of the model and performs the following
+/// operations:
+///
+/// 1. Transposes the output tensor to have the shape [Num of detections, 84].
+/// 2. Iterates over the detections and checks if the maximum score of the
+///    detection is greater than or equal to the given [confidence] threshold.
+///    If so, it extracts the bounding box coordinates and the class ID of the
+///    detection.
+/// 3. Computes the absolute coordinates of the bounding box by multiplying the
+///    relative coordinates by the factors [xFactor] and [yFactor].
+/// 4. Runs non-maximum suppression on the bounding boxes to remove overlapping
+///    boxes.
+/// 5. Returns a list of maps, where each map contains the class name, class ID,
+///    confidence score, and bounding box coordinates of a detected object.
+///
+/// - Parameters:
+///   - results: A list of OrtValue objects representing the output of the YOLO
+///     model.
+///   - frameShape: A list of two integers representing the shape of the input
+///     frame.
+///   - confidence: A double value representing the confidence threshold for
+///     the detections.
+///   - iouThreshold: A double value representing the IoU threshold for the
+///     non-maximum suppression.
+///   - inputWidth: An integer representing the width of the input frame.
+///   - inputHeight: An integer representing the height of the input frame.
+///   - labels: A list of strings representing the class names of the objects
+///     that can be detected.
+///
+/// - Returns: A list of maps, where each map contains the class name, class ID,
+///   confidence score, and bounding box coordinates of a detected object.
 List<Map<String, dynamic>> postprocessor(
     List<OrtValue?> results,
     List<int> frameShape,
@@ -169,6 +271,11 @@ Future<List<OrtValue?>?> _detectObjects(
   }
 }
 
+  /// Processes an image for object detection.
+  ///
+  /// The [message] parameter is expected to contain the image as an
+  /// [imglib.Image] and the image size as a list with the following structure:
+  /// 
 Future<List> _processImageForDetection(dynamic message) async {
   try {
     final imglib.Image img = message[0];
@@ -210,23 +317,9 @@ Future<List> _processImageForDetection(dynamic message) async {
   }
 }
 
-List<Map<String, dynamic>> applyNMS(
-    List<Map<String, dynamic>> detections, double iouThreshold) {
-  detections.sort((a, b) => b['confidence'].compareTo(a['confidence']));
-  List<Map<String, dynamic>> nmsDetections = [];
-
-  while (detections.isNotEmpty) {
-    final best = detections.removeAt(0);
-    nmsDetections.add(best);
-
-    detections.removeWhere((detection) =>
-        detection['classIndex'] == best['classIndex'] &&
-        computeIoU(best['bbox'], detection['bbox']) > iouThreshold);
-  }
-
-  return nmsDetections;
-}
-
+  /// Converts a JpegImage to an imglib.Image.
+  ///
+  /// Returns null if the image could not be decoded.
 imglib.Image fromJpegToImg(JpegImage image) {
   final img = imglib.decodeJpg(image.bytes);
   if (img == null) throw Exception("Error decoding JPEG image.");
