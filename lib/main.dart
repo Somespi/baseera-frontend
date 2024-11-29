@@ -10,6 +10,7 @@ import 'help_utilities.dart';
 import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
 import 'package:camera/camera.dart';
+import 'package:camerawesome/camerawesome_plugin.dart';
 
 late List<String> labels;
 late List<CameraDescription> _cameras;
@@ -84,7 +85,6 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isPersonMoving = false;
   Uint8List? _img;
   StreamSubscription? _gyroscopeSubscription;
-  late CameraController controller;
   bool isUsingCamera = false;
 
   @override
@@ -98,25 +98,6 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _initializeModel();
     _initializeGyroscope();
-    controller = CameraController(_cameras[0], ResolutionPreset.medium,
-        enableAudio: false, imageFormatGroup: ImageFormatGroup.jpeg);
-    controller.initialize().then((_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {});
-    }).catchError((Object e) {
-      if (e is CameraException) {
-        switch (e.code) {
-          case 'CameraAccessDenied':
-            printDebug('User denied camera access.');
-            break;
-          default:
-            printDebug('Error: $e.code');
-            break;
-        }
-      }
-    });
   }
 
   /// Initializes the object detection model.
@@ -166,10 +147,6 @@ class _MyHomePageState extends State<MyHomePage> {
     await _serialportFlutterPlugin.close();
     await _port?.close();
     _gyroscopeSubscription?.cancel();
-    if (isUsingCamera) {
-      await controller.stopImageStream();
-    }
-    controller.dispose();
     super.dispose();
   }
 
@@ -189,10 +166,6 @@ class _MyHomePageState extends State<MyHomePage> {
   /// exceeds a certain threshold. This flag is used to determine the weight
   /// of the detected objects.
   Widget build(BuildContext context) {
-    if (!controller.value.isInitialized) {
-      return Container();
-    }
-
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
@@ -200,40 +173,56 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    return Scaffold(
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-              heroTag: "camera",
-              onPressed: _readDataFromCameraStream,
-              child: const Icon(Icons.camera)),
-          SizedBox(height: 10.0),
-          FloatingActionButton(
-            heroTag: "serial",
-            child: const Icon(Icons.usb),
-            onPressed: () {
-              setState(() {
-                isUsingCamera = false;
-              });
-              _readDataFromSerial();
-            },
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          children: [
-            _out != null ? Text(_out!) : const Text("No data"),
-            _img != null
-                ? Image.memory(_img!)
-                // : isUsingCamera
-                //     ? CameraPreview(controller)
-                    : const Text("No image"),
-          ],
+    return CameraAwesomeBuilder.analysisOnly(
+        onImageForAnalysis: (image) async {
+          if (!isUsingCamera) {
+            return;
+          }
+          _readDataFromCameraStream(image as JpegImage);
+        },
+        imageAnalysisConfig: AnalysisConfig(
+          androidOptions: const AndroidAnalysisOptions.jpeg(width: 480),
+          autoStart: true,
+          maxFramesPerSecond: 5,
         ),
-      ),
-    );
+        builder: (controller, preview) => Scaffold(
+              floatingActionButton: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton(
+                      heroTag: "camera",
+                      onPressed: () {
+                        setState(() {
+                          isUsingCamera = true;
+                        });
+                      },
+                      child: const Icon(Icons.camera)),
+                  SizedBox(height: 10.0),
+                  FloatingActionButton(
+                    heroTag: "serial",
+                    child: const Icon(Icons.usb),
+                    onPressed: () {
+                      setState(() {
+                        isUsingCamera = false;
+                      });
+                      _readDataFromSerial();
+                    },
+                  ),
+                ],
+              ),
+              body: Center(
+                child: Column(
+                  children: [
+                    _out != null ? Text(_out!) : const Text("No data"),
+                    _img != null
+                        ? Image.memory(_img!)
+                        // : isUsingCamera
+                        //     ? CameraPreview(controller)
+                        : const Text("No image"),
+                  ],
+                ),
+              ),
+            ));
   }
 
   /// Reads data from the serial port, runs object detection on the received
@@ -337,42 +326,25 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _readDataFromCameraStream() async {
-    isUsingCamera = true;
-    await controller.startImageStream((image) async {
-      if (!isUsingCamera) {
-        await controller.stopImageStream();
-        return;
-      }
-      printDebug(image.format.group);
-      final imageIm = img.Image.fromBytes(
-        bytes: convertYUV420ToRGB(image).buffer,
-        height: image.height,
-        width: image.width,
-      );
+  void _readDataFromCameraStream(JpegImage image) async {
+    if (!isUsingCamera) {
+      return;
+    }
+    final imageIm = yolo.fromJpegToImg(image);
 
-      if (imageIm == null) {
-        return;
-      }
-      final detectedObjects =
-          // ignore: use_build_context_synchronously
-          await _runObjectDetectionInBackground(imageIm, context);
-      final maxObject = _weightOfObjects(detectedObjects);
-      String? result;
-      if (maxObject != null) {
-        final params = {
-          'weight': maxObject.measureWeight(),
-          'nv21Image': image,
-        };
-        result = await compute(_performActionInBackground, params);
-      }
-      setState(() {
-        // _out =
-        //     '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
-        _img = encodeAsPng(
-            imageIm.buffer.asUint8List(), image.width, image.height);
-      });
-    });
+    final detectedObjects =
+        // ignore: use_build_context_synchronously
+        await _runObjectDetectionInBackground(imageIm, context);
+    // final maxObject = _weightOfObjects(detectedObjects);
+    // //String? result;
+    // if (maxObject != null) {
+    //   // final _params = {
+    //   //   'weight': maxObject.measureWeight(),
+    //   //   'nv21Image': image,
+    //   // };
+    //   //result = await compute(_performActionInBackground, params);
+    // }
+    printDebug(detectedObjects);
   }
 
   /// Analyzes detected objects and determines the object with the maximum weight.
@@ -461,50 +433,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
       img.Image image, BuildContext context) async {
-    final detectedObjects = await yolo.runObjectDetectionInBackground(
-        image, _interpreter, labels, context);
+    final detectedObjects = await compute(yolo.runObjectDetection, {
+      'image': image,
+      'labels': labels,
+      'height': image.height,
+      'width': image.width,
+      'interpreter': _interpreter
+    });
     return detectedObjects;
   }
-}
-
-Uint8List convertYUV420ToRGB(CameraImage image) {
-  final int width = image.width;
-  final int height = image.height;
-
-  // Extract Y, U, and V planes
-  final Uint8List yPlane = image.planes[0].bytes;
-  final Uint8List uPlane = image.planes[1].bytes;
-  final Uint8List vPlane = image.planes[2].bytes;
-
-  final int uvRowStride = image.planes[1].bytesPerRow;
-  final int uvPixelStride = image.planes[1].bytesPerPixel!;
-
-  // Prepare RGB buffer
-  final Uint8List rgbBytes = Uint8List(width * height * 3);
-
-  for (int y = 0; y < height; y++) {
-    for (int x = 0; x < width; x++) {
-      final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-
-      final int yp = y * width + x;
-      final int up = uvIndex;
-      final int vp = uvIndex;
-
-      final int yVal = yPlane[yp];
-      final int uVal = uPlane[up] - 128;
-      final int vVal = vPlane[vp] - 128;
-
-      final int r = (yVal + 1.402 * vVal).clamp(0, 255).toInt();
-      final int g =
-          (yVal - 0.344136 * uVal - 0.714136 * vVal).clamp(0, 255).toInt();
-      final int b = (yVal + 1.772 * uVal).clamp(0, 255).toInt();
-
-      final int rgbIndex = yp * 3;
-      rgbBytes[rgbIndex] = r;
-      rgbBytes[rgbIndex + 1] = g;
-      rgbBytes[rgbIndex + 2] = b;
-    }
-  }
-
-  return rgbBytes;
 }
