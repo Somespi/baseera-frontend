@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
@@ -5,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'help_utilities.dart';
 
 /// Loads the COCO labels from the assets/models/labels.txt file.
@@ -31,6 +31,15 @@ Future<List<String>> loadLabels() async {
 /// model's data.
 Future<OrtSession> loadModel() async {
   final sessionOptions = OrtSessionOptions();
+  sessionOptions.setInterOpNumThreads(Platform.numberOfProcessors - 4);
+  sessionOptions.setIntraOpNumThreads(Platform.numberOfProcessors - 3);
+  sessionOptions
+      .setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
+  if (!sessionOptions.appendXnnpackProvider()) {
+    printDebug("Failed to append XnnpackProvider, Using CPUProvider");
+    sessionOptions.appendCPUProvider(CPUFlags.useArena);
+  }
+
   const assetFileName = 'assets/models/yolo_model.onnx';
   final rawAssetFile = await rootBundle.load(assetFileName);
   final bytes = rawAssetFile.buffer.asUint8List();
@@ -263,12 +272,13 @@ List<Map<String, dynamic>> postprocessor(
   List<List<int>> boxes = [];
   List<double> scores = [];
   List<int> classIds = [];
-  final c = transposeMatrix(
+
+  var c = transposeMatrix(
       (results[0] as OrtValueTensor).value[0] as List<List<double>>);
+
   for (var output in c) {
-    double maxScore = output
-        .skip(4)
-        .fold<double>(-double.infinity, (prev, current) => max(prev, current));
+    double maxScore =
+        output.skip(4).reduce((prev, current) => max(prev, current));
     if (maxScore >= confidence) {
       int classId = output.skip(4).toList().indexOf(maxScore);
       double x = output[0];
@@ -288,7 +298,8 @@ List<Map<String, dynamic>> postprocessor(
   }
 
   List<int> indices = nms(boxes, scores, confidence, iouThreshold);
-  List<Map<String, dynamic>> objects = indices.map((i) {
+
+  return indices.map((i) {
     return {
       'classIndex': classIds[i],
       'confidence': scores[i],
@@ -296,8 +307,6 @@ List<Map<String, dynamic>> postprocessor(
       'className': labels![classIds[i]]
     };
   }).toList();
-
-  return objects;
 }
 
 Future<List<OrtValue?>?> _detectObjects(
@@ -305,19 +314,21 @@ Future<List<OrtValue?>?> _detectObjects(
   if (inout.isEmpty || inout[0] == null) {
     throw ArgumentError("Input tensor is invalid or null.");
   }
-
+  // ignore: unnecessary_null_comparison
+  if (interpreter == null) {
+    return null;
+  }
   final inputOrt =
       OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
   final inputs = {'images': inputOrt};
   final runOptions = OrtRunOptions();
 
-  try {
     final outputs = await interpreter.runAsync(runOptions, inputs);
-    return outputs;
-  } finally {
-    inputOrt.release();
     runOptions.release();
-  }
+    inputOrt.release();
+    
+    return outputs;
+  
 }
 
 /// Processes an image for object detection.

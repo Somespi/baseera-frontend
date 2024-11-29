@@ -179,10 +179,7 @@ class _MyHomePageState extends State<MyHomePage> {
           if (!isUsingCamera) {
             return;
           }
-          printDebug(
-              "Received image for analysis took ${DateTime.now().millisecond - lastImageTime.millisecond} ms");
-          lastImageTime = DateTime.now();
-          //_readDataFromCameraStream(image as JpegImage);
+          _readDataFromCameraStream(image as JpegImage);
         },
         imageAnalysisConfig: AnalysisConfig(
           androidOptions: const AndroidAnalysisOptions.jpeg(width: 500),
@@ -462,7 +459,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
       img.Image image, BuildContext context) async {
-    final detectedObjects = await compute(yolo.runObjectDetection, {
+    final detectedObjects = yolo.runObjectDetection({
       'image': image,
       'labels': labels,
       'height': image.height,
