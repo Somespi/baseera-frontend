@@ -1,10 +1,9 @@
-import 'package:baseerah/help_utilities.dart';
+import 'package:basera/help_utilities.dart';
 
 import 'text_to_speech.dart' as tts;
 import 'speech_to_text.dart' as stt;
 import 'package:image/image.dart';
 import 'vqa.dart';
-
 
 class PriorityItem {
   static const Map<String, double> labelDistances = {
@@ -65,8 +64,6 @@ class PriorityItem {
     return 'LOW';
   }
 
-
-  
   /// Perform an action based on the given weight and image frame.
   ///
   /// The [weight] parameter is the weight of the object, which can be
@@ -80,7 +77,6 @@ class PriorityItem {
     if (weight == 'HIGH') {
       final caption = await VQA().caption(frame);
       return (caption);
-
     } else if (weight == 'MEDIUM') {
       // Perform medium priority action
     }

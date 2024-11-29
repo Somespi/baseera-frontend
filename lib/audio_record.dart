@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:baseerah/help_utilities.dart';
+import 'package:basera/help_utilities.dart';
 import 'package:record/record.dart';
 
 class AudioRecord {
