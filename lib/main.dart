@@ -9,17 +9,14 @@ import 'package:usb_serial/usb_serial.dart';
 import 'help_utilities.dart';
 import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
-import 'package:camera/camera.dart';
 import 'package:camerawesome/camerawesome_plugin.dart';
 
 late List<String> labels;
-late List<CameraDescription> _cameras;
-
+DateTime lastImageTime = DateTime.now();
 void main() async {
   OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
   labels = await yolo.loadLabels();
-  _cameras = await availableCameras();
 
   runApp(const MyApp());
 }
@@ -83,6 +80,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
+  bool _isStreamingPort = false;
   Uint8List? _img;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
@@ -120,22 +118,25 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  /// Listens to the gyroscope event stream and updates the [_isPersonMoving]
-  /// state variable accordingly.
+  /// Initializes the gyroscope listener to monitor device movement.
   ///
-  /// The [_isPersonMoving] state variable is set to true if the device is
-  /// moving (i.e., the magnitude of the gyroscope reading is greater than the
-  /// [movementThreshold], and false otherwise.
+  /// This function listens to the gyroscope event stream and updates the
+  /// [isPersonMoving] state variable based on the magnitude of the gyroscope
+  /// readings. If the magnitude exceeds [movementThreshold], [isPersonMoving]
+  /// is set to true, indicating that the device is moving.
   ///
-  /// The [movementThreshold] is set to 0.2, which is a reasonable value for
-  /// most devices.
+  /// The [movementThreshold] is set to 0.2, which is a common value to
+  /// detect movement.
   void _initializeGyroscope() {
-    const movementThreshold = 0.2;
+    const double movementThreshold = 0.2; // Threshold for movement detection
+    // Subscribe to the gyroscope event stream
     _gyroscopeSubscription =
         gyroscopeEventStream().listen((GyroscopeEvent event) {
-      final magnitude =
+      // Calculate the magnitude of the gyroscope reading
+      final double magnitude =
           (event.x * event.x) + (event.y * event.y) + (event.z * event.z);
       setState(() {
+        // Update the movement state based on the calculated magnitude
         isPersonMoving = magnitude > movementThreshold;
       });
     });
@@ -178,51 +179,76 @@ class _MyHomePageState extends State<MyHomePage> {
           if (!isUsingCamera) {
             return;
           }
-          _readDataFromCameraStream(image as JpegImage);
+          printDebug(
+              "Received image for analysis took ${DateTime.now().millisecond - lastImageTime.millisecond} ms");
+          lastImageTime = DateTime.now();
+          //_readDataFromCameraStream(image as JpegImage);
         },
         imageAnalysisConfig: AnalysisConfig(
-          androidOptions: const AndroidAnalysisOptions.jpeg(width: 480),
+          androidOptions: const AndroidAnalysisOptions.jpeg(width: 500),
           autoStart: true,
           maxFramesPerSecond: 5,
         ),
-        builder: (controller, preview) => Scaffold(
-              floatingActionButton: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FloatingActionButton(
-                      heroTag: "camera",
-                      onPressed: () {
-                        setState(() {
-                          isUsingCamera = true;
-                        });
-                      },
-                      child: const Icon(Icons.camera)),
-                  SizedBox(height: 10.0),
-                  FloatingActionButton(
-                    heroTag: "serial",
-                    child: const Icon(Icons.usb),
-                    onPressed: () {
-                      setState(() {
+        builder: (controller, preview) {
+          () async {
+            if (!isUsingCamera) {
+              await controller.analysisController?.imageSubscription?.cancel();
+              controller.analysisController?.imageSubscription = null;
+            }
+          }();
+          return Scaffold(
+            floatingActionButton: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton(
+                    heroTag: "camera",
+                    onPressed: () async {
+                      if (isUsingCamera) {
+                        await controller.analysisController?.imageSubscription
+                            ?.cancel();
+                        controller.analysisController?.imageSubscription = null;
                         isUsingCamera = false;
-                      });
-                      _readDataFromSerial();
+                      } else {
+                        controller.analysisController?.start();
+                        isUsingCamera = true;
+                      }
                     },
-                  ),
+                    child: !isUsingCamera
+                        ? const Icon(Icons.camera)
+                        : const Icon(Icons.stop_circle_outlined)),
+                SizedBox(height: 10.0),
+                FloatingActionButton(
+                  heroTag: "serial",
+                  child: (!_isStreamingPort)
+                      ? const Icon(Icons.usb)
+                      : const Icon(Icons.usb_off),
+                  onPressed: () {
+                    if (_isStreamingPort) {
+                      _serialportFlutterPlugin.close();
+                      _isStreamingPort = false;
+                      return;
+                    }
+                    _isStreamingPort = true;
+                    isUsingCamera = false;
+                    _readDataFromSerial();
+                  },
+                ),
+              ],
+            ),
+            body: Center(
+              child: Column(
+                children: [
+                  _out != null ? Text(_out!) : const Text("No data"),
+                  _img != null
+                      ? Image.memory(_img!)
+                      // : isUsingCamera
+                      //     ? CameraPreview(controller)
+                      : const Text("No image"),
                 ],
               ),
-              body: Center(
-                child: Column(
-                  children: [
-                    _out != null ? Text(_out!) : const Text("No data"),
-                    _img != null
-                        ? Image.memory(_img!)
-                        // : isUsingCamera
-                        //     ? CameraPreview(controller)
-                        : const Text("No image"),
-                  ],
-                ),
-              ),
-            ));
+            ),
+          );
+        });
   }
 
   /// Reads data from the serial port, runs object detection on the received
@@ -270,10 +296,13 @@ class _MyHomePageState extends State<MyHomePage> {
       UsbPort.PARITY_NONE,
     );
     isUsingCamera = false;
+    _isStreamingPort = true;
+
     port.inputStream?.listen((Uint8List event) async {
       try {
-        if (isUsingCamera) {
+        if (isUsingCamera || !_isStreamingPort) {
           await port.close();
+          return;
         }
         _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
         const delimiter = '\nDone...';
@@ -330,7 +359,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (!isUsingCamera) {
       return;
     }
-    final imageIm = yolo.fromJpegToImg(image);
+    final imageIm = await compute(yolo.fromJpegToImg, image);
 
     final detectedObjects =
         // ignore: use_build_context_synchronously
