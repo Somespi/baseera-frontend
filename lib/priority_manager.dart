@@ -1,4 +1,4 @@
-import 'package:baseerah/help_utilities.dart';
+import 'package:basera/help_utilities.dart';
 import 'text_to_speech.dart' as tts;
 import 'package:image/image.dart';
 import 'vqa.dart';
@@ -25,7 +25,7 @@ class PriorityItem {
   late DateTime itemInitializedAt;
   static tts.TextToSpeechService ttsService = tts.TextToSpeechService();
   final String? directionMoving;
-  final Image frame; // Store the frame associated with the task
+  final Image frame; 
 
   PriorityItem({
     required this.isPersonMoving,
@@ -90,14 +90,12 @@ class PriorityItem {
     printDebug("Performing action with weight $weight");
 
     if (weight == 'HIGH') {
-
         //final caption = await VQA().caption(frame);
         //printDebug("Caption: $caption");
         //if (caption == null) {
         //  return;
         //}
         await ttsService.speak("مرحبا");
-    
     } else if (weight == 'MEDIUM') {
       // Perform medium priority action
     }
