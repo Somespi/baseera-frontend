@@ -227,8 +227,8 @@ class _MyHomePageState extends State<MyHomePage> {
             _out != null ? Text(_out!) : const Text("No data"),
             _img != null
                 ? Image.memory(_img!)
-                : isUsingCamera
-                    ? CameraPreview(controller)
+                // : isUsingCamera
+                //     ? CameraPreview(controller)
                     : const Text("No image"),
           ],
         ),
@@ -354,24 +354,24 @@ class _MyHomePageState extends State<MyHomePage> {
       if (imageIm == null) {
         return;
       }
-      // final detectedObjects =
-      //     // ignore: use_build_context_synchronously
-      //     await _runObjectDetectionInBackground(imageIm, context);
-      // final maxObject = _weightOfObjects(detectedObjects);
-      // String? result;
-      // if (maxObject != null) {
-      //   final params = {
-      //     'weight': maxObject.measureWeight(),
-      //     'nv21Image': image,
-      //   };
-      //   result = await compute(_performActionInBackground, params);
-      // }
-      // setState(() {
-      //   // _out =
-      //   //     '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
-      //   _img = encodeAsPng(
-      //       imageIm.buffer.asUint8List(), image.width, image.height);
-      // });
+      final detectedObjects =
+          // ignore: use_build_context_synchronously
+          await _runObjectDetectionInBackground(imageIm, context);
+      final maxObject = _weightOfObjects(detectedObjects);
+      String? result;
+      if (maxObject != null) {
+        final params = {
+          'weight': maxObject.measureWeight(),
+          'nv21Image': image,
+        };
+        result = await compute(_performActionInBackground, params);
+      }
+      setState(() {
+        // _out =
+        //     '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
+        _img = encodeAsPng(
+            imageIm.buffer.asUint8List(), image.width, image.height);
+      });
     });
   }
 

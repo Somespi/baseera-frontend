@@ -213,14 +213,12 @@ List<Map<String, dynamic>> postprocessor(
   List<int> classIds = [];
   final c = transposeMatrix(
       (results[0] as OrtValueTensor).value[0] as List<List<double>>);
-  printDebug(c.shape);
   for (var output in c) {
     double maxScore = output
         .skip(4)
         .fold<double>(-double.infinity, (prev, current) => max(prev, current));
     if (maxScore >= confidence) {
       int classId = output.skip(4).toList().indexOf(maxScore);
-      printDebug(output);
       double x = output[0];
       double y = output[1];
       double w = output[2];
@@ -238,7 +236,6 @@ List<Map<String, dynamic>> postprocessor(
   }
 
   List<int> indices = nms(boxes, scores, confidence, iouThreshold);
-  printDebug(classIds);
   List<Map<String, dynamic>> objects = indices.map((i) {
     return {
       'classIndex': classIds[i],
