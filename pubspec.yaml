@@ -51,6 +51,7 @@ dependencies:
   bluetooth_classic: ^0.0.2
   serialport_plus: ^0.1.0
   usb_serial: ^0.5.2
+  camera: ^0.11.0+2
   onnxruntime: ^1.4.1
 
 dev_dependencies:

@@ -1,9 +1,8 @@
 import 'package:basera/help_utilities.dart';
-
 import 'text_to_speech.dart' as tts;
-import 'speech_to_text.dart' as stt;
 import 'package:image/image.dart';
 import 'vqa.dart';
+import 'dart:collection';
 
 class PriorityItem {
   static const Map<String, double> labelDistances = {
@@ -23,7 +22,10 @@ class PriorityItem {
   final String label;
   final double weight;
   late final String direction;
+  late DateTime itemInitializedAt;
+  static tts.TextToSpeechService ttsService = tts.TextToSpeechService();
   final String? directionMoving;
+  final Image frame; 
 
   PriorityItem({
     required this.isPersonMoving,
@@ -32,22 +34,16 @@ class PriorityItem {
     required this.weight,
     required this.direction,
     this.directionMoving,
-  });
+    required this.frame, 
+  }) {
+    ttsService.initTTS();
+    itemInitializedAt = DateTime.now();
+  }
 
   double getOutmostDistance(String label) {
     return labelDistances[label] ?? double.infinity;
   }
 
-  /// Measure the weight of the object.
-  ///
-  /// The weight is determined by the label of the object and the distance
-  /// from the person. If the object is a person and is moving, or if the
-  /// object is within 5 meters and is moving, the weight is HIGH. If the
-  /// object is within 10 meters and is moving, the weight is MEDIUM. Otherwise,
-  /// the weight is LOW.
-  ///
-  /// If the label is not found in the [labelDistances] map, the weight is
-  /// also LOW.
   String measureWeight() {
     if (labelDistances.containsKey(label)) {
       if (isPersonMoving && isObjectMoving && getOutmostDistance(label) <= 5) {
@@ -64,22 +60,71 @@ class PriorityItem {
     return 'LOW';
   }
 
-  /// Perform an action based on the given weight and image frame.
-  ///
-  /// The [weight] parameter is the weight of the object, which can be
-  /// HIGH, MEDIUM, or LOW. The action performed depends on the weight.
-  /// If the weight is HIGH, the action is to generate a caption for the
-  /// given [frame] and return it. If the weight is MEDIUM, the action is
-  /// to perform a medium priority action.
-  /// If the weight is LOW, the action does nothing and returns null.
-  static Future<String?> performStaticAction(String weight, Image frame) async {
+  /// Compare the current frame with the previous frame.
+  /// Returns true if there is a significant change.
+  bool hasSignificantChange(PriorityItem otherItem) {
+    Image otherFrame = otherItem.frame;
+    int width = otherFrame.width;
+    int height = otherFrame.height;
+    int diffPixels = 0;
+    int totalPixels = width * height;
+    
+    // Calculate the step to sample pixels for efficiency
+    int step = totalPixels ~/ 500;  // Adjust 500 to control accuracy and performance
+    step = step > 0 ? step : 1;  // Ensure step is at least 1
+
+    for (int i = 0; i < totalPixels; i += step) {
+      int x = i % width;
+      int y = i ~/ width;
+      if (frame.getPixel(x, y) != otherFrame.getPixel(x, y)) {
+        diffPixels++;
+      }
+    }
+
+    const int threshold = 1000;  // The threshold for significant change in pixel count
+    printDebug("diffPixels: $diffPixels");
+    return diffPixels * step > threshold;
+  }
+
+  static Future<void> performStaticAction(String weight, Image frame) async {
     printDebug("Performing action with weight $weight");
+
     if (weight == 'HIGH') {
-      final caption = await VQA().caption(frame);
-      return (caption);
+        //final caption = await VQA().caption(frame);
+        //printDebug("Caption: $caption");
+        //if (caption == null) {
+        //  return;
+        //}
+        await ttsService.speak("مرحبا");
     } else if (weight == 'MEDIUM') {
       // Perform medium priority action
     }
-    return null;
+  }
+  
+
+}
+
+class TaskQueue {
+  final Queue<PriorityItem> _queue = Queue<PriorityItem>();
+
+  void addTask(PriorityItem item) {
+    if (_queue.isNotEmpty) {
+      PriorityItem firstItem = _queue.last;
+
+      if (!item.hasSignificantChange(firstItem) || DateTime.now().difference(firstItem.itemInitializedAt).inSeconds < 10) {
+        printDebug("No significant change in frame. Skipping task.");
+        return; 
+      }
+    }
+    _queue.add(item);
+    printDebug("Task added to the queue.");
+  }
+
+  Future<void> processTasks() async {
+    while (_queue.isNotEmpty) {
+      PriorityItem item = _queue.removeFirst();
+      String weight = item.measureWeight();
+      await PriorityItem.performStaticAction(weight, item.frame);
+    }
   }
 }

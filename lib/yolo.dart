@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
@@ -5,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'help_utilities.dart';
 
 /// Loads the COCO labels from the assets/models/labels.txt file.
@@ -31,6 +31,15 @@ Future<List<String>> loadLabels() async {
 /// model's data.
 Future<OrtSession> loadModel() async {
   final sessionOptions = OrtSessionOptions();
+  sessionOptions.setInterOpNumThreads(Platform.numberOfProcessors - 4);
+  sessionOptions.setIntraOpNumThreads(Platform.numberOfProcessors - 3);
+  sessionOptions
+      .setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
+  if (!sessionOptions.appendXnnpackProvider()) {
+    printDebug("Failed to append XnnpackProvider, Using CPUProvider");
+    sessionOptions.appendCPUProvider(CPUFlags.useArena);
+  }
+
   const assetFileName = 'assets/models/yolo_model.onnx';
   final rawAssetFile = await rootBundle.load(assetFileName);
   final bytes = rawAssetFile.buffer.asUint8List();
@@ -56,24 +65,76 @@ Future<OrtSession> loadModel() async {
 /// - Returns: A `Future` that resolves to a list of maps, where each map
 ///   contains details about a detected object.
 Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    imglib.Image image, OrtSession interpreter, List<String> labels, context) async {
+    imglib.Image image,
+    OrtSession interpreter,
+    List<String> labels,
+    context) async {
   try {
-  final result = await _detectObjects(
-      await compute(_processImageForDetection, [
-        image,
-        [1, 3, 640, 640],
-        [1, 84, 8400]
-      ]),
-      interpreter);
+    final result = await _detectObjects(
+        await compute(_processImageForDetection, [
+          image,
+          [1, 3, 640, 640],
+          [1, 84, 8400]
+        ]),
+        interpreter);
 
-  final detections = postprocessor(
-      result!, [image.width, image.height], 0.35, 0.35, 640, 640, labels);
+    final detections = postprocessor(
+        result!, [image.width, image.height], 0.35, 0.35, 640, 640, labels);
 
-  return detections;
-    } catch (e) {
-      showAboutDialog(context: context, children: [Text(e.toString())]);
-      return [];
-    }
+    return detections;
+  } catch (e) {
+    showAboutDialog(context: context, children: [Text(e.toString())]);
+    return [];
+  }
+}
+
+/// Runs object detection on the provided image using the YOLO model.
+///
+/// This function processes the image data provided in the `message` map,
+/// converting the raw bytes into an [imglib.Image] and using the specified
+/// width and height. The image is then processed for object detection using
+/// the YOLO model and the given interpreter. The detected objects are further
+/// refined using a post-processing step that applies confidence and IoU
+/// thresholds to filter and extract meaningful detections.
+///
+/// - Parameters:
+///   - message: A map containing the following keys:
+///     - 'image': The raw bytes of the image to be detected.
+///     - 'width': The width of the image.
+///     - 'height': The height of the image.
+///     - 'interpreter': The ONNX runtime session used for running the model.
+///     - 'labels': A list of class labels that the model can detect.
+///
+/// - Returns: A `Future` that resolves to a list of maps, where each map
+///   contains details about a detected object, including class name, class ID,
+///   confidence score, and bounding box coordinates. If an error occurs,
+///   an empty list is returned.
+Future<List<Map<String, dynamic>>> runObjectDetection(
+    Map<String, dynamic> message) async {
+  try {
+    final result = await _detectObjects(
+        await compute(_processImageForDetection, [
+          message['image'],
+          [1, 3, 640, 640],
+          [1, 84, 8400]
+        ]),
+        message['interpreter']);
+
+    final detections = postprocessor(
+      result!,
+      [message['width'], message['height']],
+      0.35,
+      0.35,
+      640,
+      640,
+      message['labels'],
+    );
+
+    return detections;
+  } catch (e) {
+    printDebug(e.toString());
+    return [];
+  }
 }
 
 /// Non-Maximum Suppression algorithm for object detection.
@@ -120,7 +181,7 @@ List<int> nms(List<List<int>> boxes, List<double> scores, double confidence,
 /// Computes the Intersection over Union (IoU) of two bounding boxes.
 ///
 /// This function calculates the IoU metric, which is a measure of the overlap
-/// between two bounding boxes. The IoU is defined as the area of the 
+/// between two bounding boxes. The IoU is defined as the area of the
 /// intersection divided by the area of the union of the two boxes.
 ///
 /// - Parameters:
@@ -211,16 +272,15 @@ List<Map<String, dynamic>> postprocessor(
   List<List<int>> boxes = [];
   List<double> scores = [];
   List<int> classIds = [];
-  final c = transposeMatrix(
+
+  var c = transposeMatrix(
       (results[0] as OrtValueTensor).value[0] as List<List<double>>);
-  printDebug(c.shape);
+
   for (var output in c) {
-    double maxScore = output
-        .skip(4)
-        .fold<double>(-double.infinity, (prev, current) => max(prev, current));
+    double maxScore =
+        output.skip(4).reduce((prev, current) => max(prev, current));
     if (maxScore >= confidence) {
       int classId = output.skip(4).toList().indexOf(maxScore);
-      printDebug(output);
       double x = output[0];
       double y = output[1];
       double w = output[2];
@@ -238,8 +298,8 @@ List<Map<String, dynamic>> postprocessor(
   }
 
   List<int> indices = nms(boxes, scores, confidence, iouThreshold);
-  printDebug(classIds);
-  List<Map<String, dynamic>> objects = indices.map((i) {
+
+  return indices.map((i) {
     return {
       'classIndex': classIds[i],
       'confidence': scores[i],
@@ -247,8 +307,6 @@ List<Map<String, dynamic>> postprocessor(
       'className': labels![classIds[i]]
     };
   }).toList();
-
-  return objects;
 }
 
 Future<List<OrtValue?>?> _detectObjects(
@@ -256,26 +314,28 @@ Future<List<OrtValue?>?> _detectObjects(
   if (inout.isEmpty || inout[0] == null) {
     throw ArgumentError("Input tensor is invalid or null.");
   }
-
+  // ignore: unnecessary_null_comparison
+  if (interpreter == null) {
+    return null;
+  }
   final inputOrt =
       OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
   final inputs = {'images': inputOrt};
   final runOptions = OrtRunOptions();
 
-  try {
     final outputs = await interpreter.runAsync(runOptions, inputs);
-    return outputs;
-  } finally {
-    inputOrt.release();
     runOptions.release();
-  }
+    inputOrt.release();
+    
+    return outputs;
+  
 }
 
-  /// Processes an image for object detection.
-  ///
-  /// The [message] parameter is expected to contain the image as an
-  /// [imglib.Image] and the image size as a list with the following structure:
-  /// 
+/// Processes an image for object detection.
+///
+/// The [message] parameter is expected to contain the image as an
+/// [imglib.Image] and the image size as a list with the following structure:
+///
 Future<List> _processImageForDetection(dynamic message) async {
   try {
     final imglib.Image img = message[0];
@@ -317,9 +377,9 @@ Future<List> _processImageForDetection(dynamic message) async {
   }
 }
 
-  /// Converts a JpegImage to an imglib.Image.
-  ///
-  /// Returns null if the image could not be decoded.
+/// Converts a JpegImage to an imglib.Image.
+///
+/// Returns null if the image could not be decoded.
 imglib.Image fromJpegToImg(JpegImage image) {
   final img = imglib.decodeJpg(image.bytes);
   if (img == null) throw Exception("Error decoding JPEG image.");
