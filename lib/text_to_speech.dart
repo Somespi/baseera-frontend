@@ -2,9 +2,12 @@ import 'package:baseerah/help_utilities.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 class TextToSpeechService {
-  final FlutterTts _flutterTts = FlutterTts();
+  static final FlutterTts _flutterTts = FlutterTts();
 
-  // Initialize the TTS engine
+  /// Initializes the Text to Speech service.
+  ///
+  /// This function sets the language to Arabic (ar-SA), the pitch to 1.0 and the
+  /// volume to 1.0.
   Future<void> initTTS() async {
     await _flutterTts.setLanguage("ar-SA"); 
     await _flutterTts.setPitch(1.0); 

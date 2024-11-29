@@ -33,12 +33,11 @@ void main() async {
 ///             to perform the action.
 ///
 /// - Returns: A `Future<String?>` containing the result of the action.
-Future<String?> _performActionInBackground(Map<String, dynamic> params) async {
+Future<void> _performActionInBackground(Map<String, dynamic> params) async {
   final weight = params['weight'];
   final nv21Image = params['nv21Image'];
 
-  return await priority_manager.PriorityItem.performStaticAction(
-      weight, nv21Image);
+  await priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
 }
 
 class MyApp extends StatelessWidget {
@@ -182,9 +181,9 @@ class _MyHomePageState extends State<MyHomePage> {
           _readDataFromCameraStream(image as JpegImage);
         },
         imageAnalysisConfig: AnalysisConfig(
-          androidOptions: const AndroidAnalysisOptions.jpeg(width: 500),
+          androidOptions: const AndroidAnalysisOptions.jpeg(width: 480),
           autoStart: true,
-          maxFramesPerSecond: 5,
+          maxFramesPerSecond: 10,
         ),
         builder: (controller, preview) {
           () async {
@@ -314,29 +313,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
           var image = img.decodeJpg(imageData);
           if (image != null) {
-            image = img.Image.fromBytes(
-                bytes: image.buffer, height: image.height, width: image.width);
+            //image = img.Image.fromBytes(bytes: image.buffer, height: image.height, width: image.width);
 
             final detectedObjects =
                 // ignore: use_build_context_synchronously
                 await _runObjectDetectionInBackground(image);
 
-            final maxObject = _weightOfObjects(detectedObjects);
-            String? result;
+            final maxObject = _weightOfObjects(detectedObjects, image);
             if (maxObject != null) {
               final params = {
                 'weight': maxObject.measureWeight(),
                 'nv21Image': image,
               };
-              result = await compute(_performActionInBackground, params);
+              await compute(_performActionInBackground, params);
             }
 
-            setState(() {
-              _out =
-                  '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
-              _img = encodeAsPng(
-                  image!.buffer.asUint8List(), image.width, image.height);
-            });
           } else {
             printDebug('Failed to decode JPEG image');
             printDebug('Image data length: ${imageData.length}');
@@ -357,14 +348,13 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
     final imageIm = await compute(yolo.fromJpegToImg, image);
-
     final detectedObjects = await _runObjectDetectionInBackground(imageIm);
-    final maxObject = _weightOfObjects(detectedObjects);
+    final maxObject = _weightOfObjects(detectedObjects, imageIm);
 
     if (maxObject != null) {
       final params = {
         'weight': maxObject.measureWeight(),
-        'nv21Image': image,
+        'nv21Image': imageIm,
       };
       await compute(_performActionInBackground, params);
     }
@@ -387,8 +377,7 @@ class _MyHomePageState extends State<MyHomePage> {
   ///
   /// - Returns: The `PriorityItem` object with the highest weight among the
   ///   detected objects, or null if no objects are detected.
-  priority_manager.PriorityItem? _weightOfObjects(
-      List<Map<String, dynamic>> detectedObjects) {
+  priority_manager.PriorityItem? _weightOfObjects(List<Map<String, dynamic>> detectedObjects, img.Image image) {
     var maxWeight = 'LOW'; // Variable to track the maximum weight found
     priority_manager.PriorityItem?
         maxObject; // Variable to store the object with the highest weight
@@ -410,6 +399,7 @@ class _MyHomePageState extends State<MyHomePage> {
         isObjectMoving: false,
         weight: 1.0,
         direction: '',
+        frame: image
       );
 
       // Check if the object was present in the previous frame

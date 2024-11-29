@@ -1,4 +1,3 @@
-import 'package:image/image.dart' as imglib;
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:image/image.dart';
 
@@ -17,7 +16,7 @@ class VQA {
   /// "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC."
   ///
   /// The function returns null if the AI model fails to generate an answer.
-  Future<String?> ask(String question, imglib.Image image) async {
+  Future<String?> ask(String question, dynamic image) async {
     final prompt =
         "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC.";
     final content = [
@@ -38,9 +37,9 @@ class VQA {
   /// "Describe this scene for a blind with as short description as possible, limit is 30 words AND IN ARABIC."
   ///
   /// The function returns null if the AI model fails to generate a description.
-  Future<String?> caption(imglib.Image image) async {
+  Future<String?> caption(dynamic image) async {
     const prompt =
-        "Describe this scene for a blind with as short description as possible, limit is 30 words AND IN ARABIC.";
+        "Describe this scene for a blind with as short description as possible, limit is 30 words IN ARABIC DO NOT SAY ANYTHING ELSE.";
     final content = [
       Content.multi([
         TextPart(prompt),
