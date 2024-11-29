@@ -9,13 +9,16 @@ import 'package:usb_serial/usb_serial.dart';
 import 'help_utilities.dart';
 import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
+import 'package:camera/camera.dart';
 
 late List<String> labels;
+late List<CameraDescription> _cameras;
 
 void main() async {
   OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
   labels = await yolo.loadLabels();
+  _cameras = await availableCameras();
 
   runApp(const MyApp());
 }
@@ -81,6 +84,8 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isPersonMoving = false;
   Uint8List? _img;
   StreamSubscription? _gyroscopeSubscription;
+  late CameraController controller;
+  bool isUsingCamera = false;
 
   @override
 
@@ -93,6 +98,25 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _initializeModel();
     _initializeGyroscope();
+    controller = CameraController(_cameras[0], ResolutionPreset.medium,
+        enableAudio: false, imageFormatGroup: ImageFormatGroup.jpeg);
+    controller.initialize().then((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+    }).catchError((Object e) {
+      if (e is CameraException) {
+        switch (e.code) {
+          case 'CameraAccessDenied':
+            printDebug('User denied camera access.');
+            break;
+          default:
+            printDebug('Error: $e.code');
+            break;
+        }
+      }
+    });
   }
 
   /// Initializes the object detection model.
@@ -142,6 +166,10 @@ class _MyHomePageState extends State<MyHomePage> {
     await _serialportFlutterPlugin.close();
     await _port?.close();
     _gyroscopeSubscription?.cancel();
+    if (isUsingCamera) {
+      await controller.stopImageStream();
+    }
+    controller.dispose();
     super.dispose();
   }
 
@@ -161,6 +189,10 @@ class _MyHomePageState extends State<MyHomePage> {
   /// exceeds a certain threshold. This flag is used to determine the weight
   /// of the detected objects.
   Widget build(BuildContext context) {
+    if (!controller.value.isInitialized) {
+      return Container();
+    }
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.title)),
@@ -169,15 +201,35 @@ class _MyHomePageState extends State<MyHomePage> {
     }
 
     return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: _readData,
-        child: const Icon(Icons.usb),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+              heroTag: "camera",
+              onPressed: _readDataFromCameraStream,
+              child: const Icon(Icons.camera)),
+          SizedBox(height: 10.0),
+          FloatingActionButton(
+            heroTag: "serial",
+            child: const Icon(Icons.usb),
+            onPressed: () {
+              setState(() {
+                isUsingCamera = false;
+              });
+              _readDataFromSerial();
+            },
+          ),
+        ],
       ),
       body: Center(
         child: Column(
           children: [
             _out != null ? Text(_out!) : const Text("No data"),
-            _img != null ? Image.memory(_img!) : const Text("No image"),
+            _img != null
+                ? Image.memory(_img!)
+                : isUsingCamera
+                    ? CameraPreview(controller)
+                    : const Text("No image"),
           ],
         ),
       ),
@@ -199,7 +251,7 @@ class _MyHomePageState extends State<MyHomePage> {
   /// [isPersonMoving] flag to true if the magnitude of the gyroscope data
   /// exceeds a certain threshold. This flag is used to determine the weight
   /// of the detected objects.
-  void _readData() async {
+  void _readDataFromSerial() async {
     List<UsbDevice> devices = await UsbSerial.listDevices();
     printDebug("Found ${devices.length} devices");
     if (devices.isEmpty) {
@@ -228,9 +280,12 @@ class _MyHomePageState extends State<MyHomePage> {
       UsbPort.STOPBITS_1,
       UsbPort.PARITY_NONE,
     );
-
+    isUsingCamera = false;
     port.inputStream?.listen((Uint8List event) async {
       try {
+        if (isUsingCamera) {
+          await port.close();
+        }
         _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
         const delimiter = '\nDone...';
         final delimiterIndex =
@@ -282,81 +337,127 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-/// Analyzes detected objects and determines the object with the maximum weight.
-///
-/// This function processes a list of detected objects, each represented as a map
-/// containing information such as class name and bounding box. It calculates
-/// the movement and direction of each object based on its bounding box and
-/// compares it to previous frame data. The weight of each object is measured
-/// using the `measureWeight` method of `PriorityItem`. The object with the
-/// highest weight ('HIGH' > 'MEDIUM' > 'LOW') is identified, and if multiple
-/// objects have the same weight, the first one is selected.
-///
-/// - Parameters:
-///   - detectedObjects: A list of maps, where each map contains details about
-///     a detected object, including its class name and bounding box.
-///
-/// - Returns: The `PriorityItem` object with the highest weight among the
-///   detected objects, or null if no objects are detected.
-priority_manager.PriorityItem? _weightOfObjects(List<Map<String, dynamic>> detectedObjects) {
-  var maxWeight = 'LOW';  // Variable to track the maximum weight found
-  priority_manager.PriorityItem? maxObject;  // Variable to store the object with the highest weight
-
-  var previousFrameObjects = <String, List<double>>{};  // Map to store previous frame objects' positions
-
-  // Iterate over each detected object to determine movement and weight
-  for (var objectData in detectedObjects) {
-    String label = objectData['className']; // Get the label of the detected object
-    List<int> currentBox = objectData['bbox']; // Get the bounding box of the detected object
-
-    // Create a PriorityItem for the current object
-    priority_manager.PriorityItem item = priority_manager.PriorityItem(
-      label: label,
-      isPersonMoving: isPersonMoving,
-      isObjectMoving: false,
-      weight: 1.0,
-      direction: '',
-    );
-
-    // Check if the object was present in the previous frame
-    if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
-      // Calculate movement based on the change in position
-      double previousX = previousFrameObjects[labels[objectData['classIndex']]]?[0] ?? 0.0;
-      double previousY = previousFrameObjects[labels[objectData['classIndex']]]?[1] ?? 0.0;
-
-      double dx = currentBox[0] - previousX;
-      double dy = currentBox[1] - previousY;
-
-      bool isMoving = (dx.abs() + dy.abs()) > 5; // Determine if the object is moving
-      String direction = '';
-      if (isMoving) {
-        // Determine the direction of movement
-        if (dx.abs() > dy.abs()) {
-          direction = dx > 0 ? 'right' : 'left';
-        } else {
-          direction = dy > 0 ? 'down' : 'up';
-        }
+  void _readDataFromCameraStream() async {
+    isUsingCamera = true;
+    await controller.startImageStream((image) async {
+      if (!isUsingCamera) {
+        await controller.stopImageStream();
+        return;
       }
-      item.isObjectMoving = isMoving;
-      item.direction = direction;
-    }
+      printDebug(image.format.group);
+      final imageIm = img.Image.fromBytes(
+        bytes: convertYUV420ToRGB(image).buffer,
+        height: image.height,
+        width: image.width,
+      );
 
-    // Measure the weight of the current object
-    var itemWeight = item.measureWeight();
-    // Update maxWeight and maxObject based on itemWeight
-    if (itemWeight == 'HIGH') {
-      maxWeight = 'HIGH';
-      maxObject = item;
-    } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
-      maxWeight = 'MEDIUM';
-      maxObject = item;
-    } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
-      maxObject ??= item;
-    }
+      if (imageIm == null) {
+        return;
+      }
+      // final detectedObjects =
+      //     // ignore: use_build_context_synchronously
+      //     await _runObjectDetectionInBackground(imageIm, context);
+      // final maxObject = _weightOfObjects(detectedObjects);
+      // String? result;
+      // if (maxObject != null) {
+      //   final params = {
+      //     'weight': maxObject.measureWeight(),
+      //     'nv21Image': image,
+      //   };
+      //   result = await compute(_performActionInBackground, params);
+      // }
+      // setState(() {
+      //   // _out =
+      //   //     '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
+      //   _img = encodeAsPng(
+      //       imageIm.buffer.asUint8List(), image.width, image.height);
+      // });
+    });
   }
 
-  return maxObject; // Return the object with the highest weight
-}
+  /// Analyzes detected objects and determines the object with the maximum weight.
+  ///
+  /// This function processes a list of detected objects, each represented as a map
+  /// containing information such as class name and bounding box. It calculates
+  /// the movement and direction of each object based on its bounding box and
+  /// compares it to previous frame data. The weight of each object is measured
+  /// using the `measureWeight` method of `PriorityItem`. The object with the
+  /// highest weight ('HIGH' > 'MEDIUM' > 'LOW') is identified, and if multiple
+  /// objects have the same weight, the first one is selected.
+  ///
+  /// - Parameters:
+  ///   - detectedObjects: A list of maps, where each map contains details about
+  ///     a detected object, including its class name and bounding box.
+  ///
+  /// - Returns: The `PriorityItem` object with the highest weight among the
+  ///   detected objects, or null if no objects are detected.
+  priority_manager.PriorityItem? _weightOfObjects(
+      List<Map<String, dynamic>> detectedObjects) {
+    var maxWeight = 'LOW'; // Variable to track the maximum weight found
+    priority_manager.PriorityItem?
+        maxObject; // Variable to store the object with the highest weight
+
+    var previousFrameObjects = <String,
+        List<double>>{}; // Map to store previous frame objects' positions
+
+    // Iterate over each detected object to determine movement and weight
+    for (var objectData in detectedObjects) {
+      String label =
+          objectData['className']; // Get the label of the detected object
+      List<int> currentBox =
+          objectData['bbox']; // Get the bounding box of the detected object
+
+      // Create a PriorityItem for the current object
+      priority_manager.PriorityItem item = priority_manager.PriorityItem(
+        label: label,
+        isPersonMoving: isPersonMoving,
+        isObjectMoving: false,
+        weight: 1.0,
+        direction: '',
+      );
+
+      // Check if the object was present in the previous frame
+      if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
+        // Calculate movement based on the change in position
+        double previousX =
+            previousFrameObjects[labels[objectData['classIndex']]]?[0] ?? 0.0;
+        double previousY =
+            previousFrameObjects[labels[objectData['classIndex']]]?[1] ?? 0.0;
+
+        double dx = currentBox[0] - previousX;
+        double dy = currentBox[1] - previousY;
+
+        bool isMoving =
+            (dx.abs() + dy.abs()) > 5; // Determine if the object is moving
+        String direction = '';
+        if (isMoving) {
+          // Determine the direction of movement
+          if (dx.abs() > dy.abs()) {
+            direction = dx > 0 ? 'right' : 'left';
+          } else {
+            direction = dy > 0 ? 'down' : 'up';
+          }
+        }
+        item.isObjectMoving = isMoving;
+        item.direction = direction;
+      }
+
+      // Measure the weight of the current object
+      var itemWeight = item.measureWeight();
+      // Update maxWeight and maxObject based on itemWeight
+      if (itemWeight == 'HIGH') {
+        maxWeight = 'HIGH';
+        maxObject = item;
+      } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
+        maxWeight = 'MEDIUM';
+        maxObject = item;
+      } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
+        maxObject ??= item;
+      }
+    }
+
+    return maxObject; // Return the object with the highest weight
+  }
 
   Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
       img.Image image, BuildContext context) async {
@@ -364,4 +465,46 @@ priority_manager.PriorityItem? _weightOfObjects(List<Map<String, dynamic>> detec
         image, _interpreter, labels, context);
     return detectedObjects;
   }
+}
+
+Uint8List convertYUV420ToRGB(CameraImage image) {
+  final int width = image.width;
+  final int height = image.height;
+
+  // Extract Y, U, and V planes
+  final Uint8List yPlane = image.planes[0].bytes;
+  final Uint8List uPlane = image.planes[1].bytes;
+  final Uint8List vPlane = image.planes[2].bytes;
+
+  final int uvRowStride = image.planes[1].bytesPerRow;
+  final int uvPixelStride = image.planes[1].bytesPerPixel!;
+
+  // Prepare RGB buffer
+  final Uint8List rgbBytes = Uint8List(width * height * 3);
+
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+
+      final int yp = y * width + x;
+      final int up = uvIndex;
+      final int vp = uvIndex;
+
+      final int yVal = yPlane[yp];
+      final int uVal = uPlane[up] - 128;
+      final int vVal = vPlane[vp] - 128;
+
+      final int r = (yVal + 1.402 * vVal).clamp(0, 255).toInt();
+      final int g =
+          (yVal - 0.344136 * uVal - 0.714136 * vVal).clamp(0, 255).toInt();
+      final int b = (yVal + 1.772 * uVal).clamp(0, 255).toInt();
+
+      final int rgbIndex = yp * 3;
+      rgbBytes[rgbIndex] = r;
+      rgbBytes[rgbIndex + 1] = g;
+      rgbBytes[rgbIndex + 2] = b;
+    }
+  }
+
+  return rgbBytes;
 }
