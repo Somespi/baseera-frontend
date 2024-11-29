@@ -83,6 +83,7 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription? _gyroscopeSubscription;
 
   @override
+
   /// Initializes the object detection model and starts listening to the
   /// gyroscope.
   ///
@@ -145,6 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
+
   /// Builds the main home page widget.
   ///
   /// This widget displays a floating action button that reads data from the
@@ -168,154 +170,198 @@ class _MyHomePageState extends State<MyHomePage> {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          List<UsbDevice> devices = await UsbSerial.listDevices();
-          printDebug("Found ${devices.length} devices");
-          if (devices.isEmpty) {
-            return;
-          }
-
-          UsbPort? port = await devices[0].create();
-          if (port == null) {
-            printDebug("Failed to create port");
-            return;
-          }
-          _port = port;
-
-          bool openResult = await port.open();
-          if (!openResult) {
-            printDebug("Failed to open port");
-            return;
-          }
-
-          await port.setDTR(true);
-          await port.setRTS(true);
-
-          port.setPortParameters(
-            115200,
-            UsbPort.DATABITS_8,
-            UsbPort.STOPBITS_1,
-            UsbPort.PARITY_NONE,
-          );
-
-          port.inputStream?.listen((Uint8List event) async {
-            try {
-              _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
-              const delimiter = '\nDone...';
-              final delimiterIndex =
-                  String.fromCharCodes(_currentImgBuffer).indexOf(delimiter);
-
-              if (delimiterIndex != -1) {
-                final imageData = _currentImgBuffer.sublist(0, delimiterIndex);
-
-                _currentImgBuffer = _currentImgBuffer
-                    .sublist(delimiterIndex + delimiter.length);
-
-                var image = img.decodeJpg(imageData);
-                if (image != null) {
-                  image = img.Image.fromBytes(
-                      bytes: image.buffer,
-                      height: image.height,
-                      width: image.width);
-                  
-                  final detectedObjects =
-                      await yolo.runObjectDetectionInBackground(
-                          image, _interpreter, labels, context);
-                   var maxWeight = 'LOW';
-                  priority_manager.PriorityItem? maxObject;
-
-                  var previousFrameObjects = <String, List<double>>{};
-
-                  for (var objectData in detectedObjects) {
-                    String label = objectData['className'];
-                    List<int> currentBox = objectData['bbox'];
-
-                    priority_manager.PriorityItem item =
-                        priority_manager.PriorityItem(
-                      label: label,
-                      isPersonMoving: isPersonMoving,
-                      isObjectMoving: false,
-                      weight: 1.0,
-                      direction: '',
-                    );
-
-                    if (previousFrameObjects
-                        .containsKey(labels[objectData['classIndex']])) {
-                      double previousX =
-                          previousFrameObjects[labels[objectData['classIndex']]]
-                                  ?[0] ??
-                              0.0;
-                      double previousY =
-                          previousFrameObjects[labels[objectData['classIndex']]]
-                                  ?[1] ??
-                              0.0;
-
-                      double dx = currentBox[0] - previousX;
-                      double dy = currentBox[1] - previousY;
-
-                      bool isMoving = (dx.abs() + dy.abs()) > 5;
-                      String direction = '';
-                      if (isMoving) {
-                        if (dx.abs() > dy.abs()) {
-                          direction = dx > 0 ? 'right' : 'left';
-                        } else {
-                          direction = dy > 0 ? 'down' : 'up';
-                        }
-                      }
-                      item.isObjectMoving = isMoving;
-                      item.direction = direction;
-                    }
-
-                    var itemWeight = item.measureWeight();
-                    if (itemWeight == 'HIGH') {
-                      maxWeight = 'HIGH';
-                      maxObject = item;
-                    } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
-                      maxWeight = 'MEDIUM';
-                      maxObject = item;
-                    } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
-                      maxObject ??= item;
-                    }
-                  }
-
-                  String? result;
-                  printDebug("Max weight: $maxWeight");
-                  if (maxObject != null) {
-                    final params = {
-                      'weight': maxObject.measureWeight(),
-                      'nv21Image': image,
-                    };
-                    result = await compute(_performActionInBackground, params);
-                  }
-
-                  
-                
-                  setState(() {
-                    _out =
-                        '\n $maxWeight ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
-                    _img = encodeAsPng(image!.buffer.asUint8List(), image.width, image.height);
-                  });
-                } else {
-                  printDebug('Failed to decode JPEG image');
-                  printDebug('Image data length: ${imageData.length}');
-                }
-              }
-            } catch (e) {
-              printDebug('Error: $e');
-            }
-          }, onError: (error) {
-            printDebug('Stream read error: $error');
-          }, onDone: () {
-            printDebug('Image stream closed');
-          });
-        },
+        onPressed: _readData,
         child: const Icon(Icons.usb),
       ),
       body: Center(
-          child: Column(children: [
-        _out != null ? Text(_out!) : const Text("No data"),
-        _img != null ? Image.memory(_img!) : const Text("No image"),
-      ])),
+        child: Column(
+          children: [
+            _out != null ? Text(_out!) : const Text("No data"),
+            _img != null ? Image.memory(_img!) : const Text("No image"),
+          ],
+        ),
+      ),
     );
+  }
+
+  /// Reads data from the serial port, runs object detection on the received
+  /// images and performs the appropriate action based on the object detection
+  /// results.
+  ///
+  /// This function opens the serial port, sets the port parameters, and listens
+  /// to the input stream. When a delimiter is found in the input stream, the
+  /// function decodes the image data and runs object detection on the image.
+  /// The results of the object detection are used to determine the weight of
+  /// the detected objects. The function then performs the appropriate action
+  /// based on the weight of the detected objects.
+  ///
+  /// The function also listens to the gyroscope data stream and sets the
+  /// [isPersonMoving] flag to true if the magnitude of the gyroscope data
+  /// exceeds a certain threshold. This flag is used to determine the weight
+  /// of the detected objects.
+  void _readData() async {
+    List<UsbDevice> devices = await UsbSerial.listDevices();
+    printDebug("Found ${devices.length} devices");
+    if (devices.isEmpty) {
+      return;
+    }
+
+    UsbPort? port = await devices[0].create();
+    if (port == null) {
+      printDebug("Failed to create port");
+      return;
+    }
+    _port = port;
+
+    bool openResult = await port.open();
+    if (!openResult) {
+      printDebug("Failed to open port");
+      return;
+    }
+
+    await port.setDTR(true);
+    await port.setRTS(true);
+
+    port.setPortParameters(
+      115200,
+      UsbPort.DATABITS_8,
+      UsbPort.STOPBITS_1,
+      UsbPort.PARITY_NONE,
+    );
+
+    port.inputStream?.listen((Uint8List event) async {
+      try {
+        _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
+        const delimiter = '\nDone...';
+        final delimiterIndex =
+            String.fromCharCodes(_currentImgBuffer).indexOf(delimiter);
+
+        if (delimiterIndex != -1) {
+          final imageData = _currentImgBuffer.sublist(0, delimiterIndex);
+
+          _currentImgBuffer =
+              _currentImgBuffer.sublist(delimiterIndex + delimiter.length);
+
+          var image = img.decodeJpg(imageData);
+          if (image != null) {
+            image = img.Image.fromBytes(
+                bytes: image.buffer, height: image.height, width: image.width);
+
+            final detectedObjects =
+                // ignore: use_build_context_synchronously
+                await _runObjectDetectionInBackground(image, context);
+
+            final maxObject = _weightOfObjects(detectedObjects);
+            String? result;
+            if (maxObject != null) {
+              final params = {
+                'weight': maxObject.measureWeight(),
+                'nv21Image': image,
+              };
+              result = await compute(_performActionInBackground, params);
+            }
+
+            setState(() {
+              _out =
+                  '\n ${maxObject?.measureWeight()} ${maxObject?.direction} ${maxObject?.isPersonMoving} ${maxObject?.isObjectMoving} \n $result';
+              _img = encodeAsPng(
+                  image!.buffer.asUint8List(), image.width, image.height);
+            });
+          } else {
+            printDebug('Failed to decode JPEG image');
+            printDebug('Image data length: ${imageData.length}');
+          }
+        }
+      } catch (e) {
+        printDebug('Error: $e');
+      }
+    }, onError: (error) {
+      printDebug('Stream read error: $error');
+    }, onDone: () {
+      printDebug('Image stream closed');
+    });
+  }
+
+/// Analyzes detected objects and determines the object with the maximum weight.
+///
+/// This function processes a list of detected objects, each represented as a map
+/// containing information such as class name and bounding box. It calculates
+/// the movement and direction of each object based on its bounding box and
+/// compares it to previous frame data. The weight of each object is measured
+/// using the `measureWeight` method of `PriorityItem`. The object with the
+/// highest weight ('HIGH' > 'MEDIUM' > 'LOW') is identified, and if multiple
+/// objects have the same weight, the first one is selected.
+///
+/// - Parameters:
+///   - detectedObjects: A list of maps, where each map contains details about
+///     a detected object, including its class name and bounding box.
+///
+/// - Returns: The `PriorityItem` object with the highest weight among the
+///   detected objects, or null if no objects are detected.
+priority_manager.PriorityItem? _weightOfObjects(List<Map<String, dynamic>> detectedObjects) {
+  var maxWeight = 'LOW';  // Variable to track the maximum weight found
+  priority_manager.PriorityItem? maxObject;  // Variable to store the object with the highest weight
+
+  var previousFrameObjects = <String, List<double>>{};  // Map to store previous frame objects' positions
+
+  // Iterate over each detected object to determine movement and weight
+  for (var objectData in detectedObjects) {
+    String label = objectData['className']; // Get the label of the detected object
+    List<int> currentBox = objectData['bbox']; // Get the bounding box of the detected object
+
+    // Create a PriorityItem for the current object
+    priority_manager.PriorityItem item = priority_manager.PriorityItem(
+      label: label,
+      isPersonMoving: isPersonMoving,
+      isObjectMoving: false,
+      weight: 1.0,
+      direction: '',
+    );
+
+    // Check if the object was present in the previous frame
+    if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
+      // Calculate movement based on the change in position
+      double previousX = previousFrameObjects[labels[objectData['classIndex']]]?[0] ?? 0.0;
+      double previousY = previousFrameObjects[labels[objectData['classIndex']]]?[1] ?? 0.0;
+
+      double dx = currentBox[0] - previousX;
+      double dy = currentBox[1] - previousY;
+
+      bool isMoving = (dx.abs() + dy.abs()) > 5; // Determine if the object is moving
+      String direction = '';
+      if (isMoving) {
+        // Determine the direction of movement
+        if (dx.abs() > dy.abs()) {
+          direction = dx > 0 ? 'right' : 'left';
+        } else {
+          direction = dy > 0 ? 'down' : 'up';
+        }
+      }
+      item.isObjectMoving = isMoving;
+      item.direction = direction;
+    }
+
+    // Measure the weight of the current object
+    var itemWeight = item.measureWeight();
+    // Update maxWeight and maxObject based on itemWeight
+    if (itemWeight == 'HIGH') {
+      maxWeight = 'HIGH';
+      maxObject = item;
+    } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
+      maxWeight = 'MEDIUM';
+      maxObject = item;
+    } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
+      maxObject ??= item;
+    }
+  }
+
+  return maxObject; // Return the object with the highest weight
+}
+
+  Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
+      img.Image image, BuildContext context) async {
+    final detectedObjects = await yolo.runObjectDetectionInBackground(
+        image, _interpreter, labels, context);
+    return detectedObjects;
   }
 }
