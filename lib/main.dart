@@ -319,7 +319,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
             final detectedObjects =
                 // ignore: use_build_context_synchronously
-                await _runObjectDetectionInBackground(image, context);
+                await _runObjectDetectionInBackground(image);
 
             final maxObject = _weightOfObjects(detectedObjects);
             String? result;
@@ -358,18 +358,16 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     final imageIm = await compute(yolo.fromJpegToImg, image);
 
-    final detectedObjects =
-        // ignore: use_build_context_synchronously
-        await _runObjectDetectionInBackground(imageIm, context);
-    // final maxObject = _weightOfObjects(detectedObjects);
-    // //String? result;
-    // if (maxObject != null) {
-    //   // final _params = {
-    //   //   'weight': maxObject.measureWeight(),
-    //   //   'nv21Image': image,
-    //   // };
-    //   //result = await compute(_performActionInBackground, params);
-    // }
+    final detectedObjects = await _runObjectDetectionInBackground(imageIm);
+    final maxObject = _weightOfObjects(detectedObjects);
+
+    if (maxObject != null) {
+      final params = {
+        'weight': maxObject.measureWeight(),
+        'nv21Image': image,
+      };
+      await compute(_performActionInBackground, params);
+    }
     printDebug(detectedObjects);
   }
 
@@ -458,7 +456,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
-      img.Image image, BuildContext context) async {
+      img.Image image) async {
     final detectedObjects = yolo.runObjectDetection({
       'image': image,
       'labels': labels,
