@@ -195,12 +195,12 @@ class _MyHomePageState extends State<MyHomePage> {
             return;
           }
 
-
-          final bool isIdentical = _compareImages(lastFrame!, image as Nv21Image);
+          final bool isIdentical =
+              _compareImages(lastFrame!, image as Nv21Image);
           if (isIdentical) {
-            printDebug("Same frame. Skipping task.");
             return;
           }
+          cleanupIsolates();
           lastFrame = image;
           image = await (image).toJpeg();
           _readDataFromCameraStream(image as JpegImage);
@@ -213,6 +213,7 @@ class _MyHomePageState extends State<MyHomePage> {
         builder: (controller, preview) {
           () async {
             if (!isUsingCamera) {
+              cleanupIsolates();
               for (var isolate in _isolates) {
                 isolate.kill(priority: Isolate.immediate);
               }
@@ -228,11 +229,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     heroTag: "camera",
                     onPressed: () async {
                       if (isUsingCamera) {
-                        for (var isolate in _isolates) {
-                          // ignore: unnecessary_null_comparison (sanity check)
-                          if (isolate == null) continue;
-                          isolate.kill(priority: Isolate.immediate);
-                        }
+                        cleanupIsolates();
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
                         controller.analysisController?.imageSubscription = null;
@@ -393,9 +390,82 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  bool isIsolateActive(Isolate isolate) {
+    try {
+      isolate.ping(RawReceivePort().sendPort);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  void cleanupIsolates() {
+    // _isolates.removeWhere((isolate) {
+    //   try {
+    //     // ignore: unnecessary_null_comparison
+    //     if (isolate == null) {
+    //       return false;
+    //     }
+
+    //     if (!isIsolateActive(isolate)) {
+    //       return false;
+    //     }
+
+    //     return false;
+    //   } catch (e) {
+    //     return true;
+    //   }
+    // });
+  }
+
+  /// Spawns a new isolate to perform a task with the provided parameters.
+  ///
+  /// This function manages a pool of isolates, ensuring that no more than
+  /// three isolates are running concurrently. If the limit is exceeded, the
+  /// oldest isolate is terminated before starting a new one. The task to be
+  /// performed in the isolate is specified by `_taskEntryPoint`, and the
+  /// `params` map contains the necessary parameters for the task. Errors in
+  /// the isolate are set to non-fatal to allow recovery without crashing the
+  /// main application.
+  ///
+  /// - Parameters:
+  ///   - params: A map containing the parameters required for the task.
+  ///
+  /// This function is typically used to offload heavy computations from the
+  /// main thread to improve application responsiveness.
   void _performTaskInIsolate(Map<String, dynamic> params) async {
+    cleanupIsolates();
+    if (_isolates.length >= 2) {
+      // Create a copy of the list to avoid modification during iteration
+      final isolatesToKill = List<Isolate>.from(_isolates);
+
+      for (final isolate in isolatesToKill) {
+        try {
+          // ignore: unnecessary_null_comparison
+          if (isolate == null) {
+            printDebug("Isolate is null.");
+            _isolates.remove(isolate);
+            continue;
+          }
+          try {
+            isolate.ping(RawReceivePort().sendPort);
+          } catch (e) {
+            printDebug("Isolate is already dead.");
+            _isolates.remove(isolate);
+            continue;
+          }
+          isolate.kill(priority: Isolate.immediate);
+          _isolates.remove(isolate);
+          printDebug("Killed isolate. Remaining isolates: ${_isolates.length}");
+        } catch (e) {
+          printDebug("Error handling isolate: $e");
+          _isolates.remove(isolate);
+        }
+      }
+    }
     final isolate = await Isolate.spawn(_taskEntryPoint, params);
     isolate.setErrorsFatal(false);
+    printDebug("Started task in isolate #${_isolates.length}.");
     _isolates.add(isolate);
   }
 
@@ -525,8 +595,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    printDebug("Difference count: $differenceCount");
-    const int differenceThreshold = 1000;
+    const int differenceThreshold = 50419;
     return differenceCount < differenceThreshold;
   }
 }

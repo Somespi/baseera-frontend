@@ -31,7 +31,7 @@ Future<List<String>> loadLabels() async {
 /// model's data.
 Future<OrtSession> loadModel() async {
   final sessionOptions = OrtSessionOptions();
-  sessionOptions.setInterOpNumThreads(Platform.numberOfProcessors - 4);
+  sessionOptions.setInterOpNumThreads(Platform.numberOfProcessors - 2);
   sessionOptions.setIntraOpNumThreads(Platform.numberOfProcessors - 3);
   sessionOptions
       .setSessionGraphOptimizationLevel(GraphOptimizationLevel.ortEnableAll);
@@ -44,48 +44,6 @@ Future<OrtSession> loadModel() async {
   final rawAssetFile = await rootBundle.load(assetFileName);
   final bytes = rawAssetFile.buffer.asUint8List();
   return OrtSession.fromBuffer(bytes, sessionOptions);
-}
-
-/// Runs object detection on the provided image in the background.
-///
-/// This function processes the image and applies the YOLO model using the given
-/// `interpreter` and `labels` to detect objects. It returns a list of detected
-/// objects with their properties such as bounding boxes and class names.
-///
-/// The function uses a predefined input size and thresholds for confidence and
-/// IoU during detection. If an error occurs during the processing, it displays
-/// an error dialog and returns an empty list.
-///
-/// - Parameters:
-///   - image: The image to be analyzed for object detection.
-///   - interpreter: The OrtSession used for running the YOLO model.
-///   - labels: A list of labels representing the classes the model can detect.
-///   - context: The BuildContext used for displaying error dialogs.
-///
-/// - Returns: A `Future` that resolves to a list of maps, where each map
-///   contains details about a detected object.
-Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
-    imglib.Image image,
-    OrtSession interpreter,
-    List<String> labels,
-    context) async {
-  try {
-    final result = await _detectObjects(
-        await compute(_processImageForDetection, [
-          image,
-          [1, 3, 640, 640],
-          [1, 84, 8400]
-        ]),
-        interpreter);
-
-    final detections = postprocessor(
-        result!, [image.width, image.height], 0.35, 0.35, 640, 640, labels);
-
-    return detections;
-  } catch (e) {
-    showAboutDialog(context: context, children: [Text(e.toString())]);
-    return [];
-  }
 }
 
 /// Runs object detection on the provided image using the YOLO model.
@@ -139,7 +97,6 @@ Future<List<Map<String, dynamic>>> runObjectDetection(
 
     return detections;
   } catch (e) {
-    printDebug(e.toString());
     return [];
   }
 }
@@ -329,13 +286,14 @@ Future<List<OrtValue?>?> _detectObjects(
       OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
   final inputs = {'images': inputOrt};
   final runOptions = OrtRunOptions();
-
-    final outputs = await interpreter.runAsync(runOptions, inputs);
-    runOptions.release();
-    inputOrt.release();
-    
-    return outputs;
+  runOptions.unsetTerminate();
+  runOptions.setRunLogSeverityLevel(0);
   
+  final outputs = await interpreter.runAsync(runOptions, inputs);
+  runOptions.release();
+  inputOrt.release();
+
+  return outputs;
 }
 
 /// Processes an image for object detection.
