@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:basera/vqa.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -10,12 +11,15 @@ import 'package:flutter/material.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:usb_serial/usb_serial.dart';
 import 'help_utilities.dart';
+import 'text_to_speech.dart';
 import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
 import 'package:camerawesome/camerawesome_plugin.dart';
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
+TextToSpeechService ttsService = TextToSpeechService();
+
 void main() async {
   OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +31,7 @@ void main() async {
         "Error: Root Isolate Token is null. Ensure this runs on the main isolate.");
     exit(1);
   }
+  await ttsService.initTTS();
   labels = await yolo.loadLabels();
 
   runApp(const MyApp());
@@ -395,7 +400,7 @@ class _MyHomePageState extends State<MyHomePage> {
           maxObject.itemInitializedAt
                   .difference(_lastItem!.itemInitializedAt)
                   .inSeconds >
-              2.5) {
+              5) {
         _lastItem = maxObject;
         _taskEntryPoint(params);
       }
@@ -410,6 +415,7 @@ class _MyHomePageState extends State<MyHomePage> {
       return false;
     }
   }
+
   void _cleanUp() {
     if (_isolates.length >= 2) {
       final isolatesToKill = List<Isolate?>.from(_isolates);
@@ -439,7 +445,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  static void _taskEntryPoint(Map<String, dynamic> params) {
+  static Future<void> _taskEntryPoint(Map<String, dynamic> params) async {
     BackgroundIsolateBinaryMessenger.ensureInitialized(
         RootIsolateToken.instance!);
     final weight = params['weight'];
@@ -448,11 +454,16 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
     if (weight == 'HIGH') {
-      HapticFeedback.heavyImpact();
+      await HapticFeedback.heavyImpact();
+      String? caption = await VQA().caption(nv21Image);
+      if (caption == null) {
+        printDebug("Caption is null");
+      } else {
+        printDebug("Caption: $caption");
+        await ttsService.speak(caption);
+      }
     } else if (weight == 'MEDIUM') {
       HapticFeedback.mediumImpact();
-    } else if (weight == 'LOW') {
-      HapticFeedback.lightImpact();
     }
     //priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
     //params['port'].send('done');
