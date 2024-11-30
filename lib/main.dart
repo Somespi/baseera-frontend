@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,7 @@ void main() async {
   } else {
     printDebug(
         "Error: Root Isolate Token is null. Ensure this runs on the main isolate.");
+    exit(1);
   }
   labels = await yolo.loadLabels();
 
@@ -95,7 +97,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Nv21Image? lastFrame;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
-
+  priority_manager.PriorityItem? _lastItem;
   @override
 
   /// Initializes the object detection model and starts listening to the
@@ -389,7 +391,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
       printDebug(detectedObjects);
 
-      _performTaskInIsolate(params);
+      if (_lastItem == null ||
+          maxObject.itemInitializedAt
+                  .difference(_lastItem!.itemInitializedAt)
+                  .inSeconds >
+              2.5) {
+        _lastItem = maxObject;
+        _taskEntryPoint(params);
+      }
     }
   }
 
@@ -477,10 +486,22 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   static void _taskEntryPoint(Map<String, dynamic> params) {
+    BackgroundIsolateBinaryMessenger.ensureInitialized(
+        RootIsolateToken.instance!);
     final weight = params['weight'];
     final nv21Image = params['nv21Image'];
-    priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
-    params['port'].send('done');
+    if (weight == null || nv21Image == null) {
+      return;
+    }
+    if (weight == 'HIGH') {
+      HapticFeedback.heavyImpact();
+    } else if (weight == 'MEDIUM') {
+      HapticFeedback.mediumImpact();
+    } else if (weight == 'LOW') {
+      HapticFeedback.lightImpact();
+    }
+    //priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
+    //params['port'].send('done');
   }
 
   /// Analyzes detected objects and determines the object with the maximum weight.
@@ -523,7 +544,7 @@ class _MyHomePageState extends State<MyHomePage> {
           weight: 1.0,
           direction: '',
           frame: image);
-
+      item.initTTS();
       // Check if the object was present in the previous frame
       if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
         // Calculate movement based on the change in position

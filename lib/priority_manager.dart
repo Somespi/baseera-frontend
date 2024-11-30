@@ -38,8 +38,11 @@ class PriorityItem {
     this.directionMoving,
     required this.frame,
   }) {
-    ttsService.initTTS();
     itemInitializedAt = DateTime.now();
+  }
+
+  void initTTS() async {
+    await ttsService.initTTS();
   }
 
   double getOutmostDistance(String label) {
@@ -71,26 +74,21 @@ class PriorityItem {
     int diffPixels = 0;
     int totalPixels = width * height;
 
-    // Calculate the step to sample pixels for efficiency
-    int step =
-        totalPixels ~/ 500; // Adjust 500 to control accuracy and performance
-    step = step > 0 ? step : 1; // Ensure step is at least 1
-
-    for (int i = 0; i < totalPixels; i += step) {
+    final pixels = totalPixels ~/ 500;
+    for (int i = 0; i < totalPixels; i += pixels) {
       int x = i % width;
       int y = i ~/ width;
       if (frame.getPixel(x, y) != otherFrame.getPixel(x, y)) {
         diffPixels++;
+        if (diffPixels > 1000 ~/ pixels) {
+          return true; 
+        }
       }
     }
-
-    const int threshold =
-        1000; // The threshold for significant change in pixel count
-    return diffPixels * step > threshold;
+    return false;
   }
 
   static Future<void> performStaticAction(String weight, Image frame) async {
-
     if (weight == 'HIGH') {
       //final caption = await VQA().caption(frame);
       //printDebug("Caption: $caption");
