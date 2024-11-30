@@ -91,7 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isStreamingPort = false;
   Uint8List? _img;
   // ignore: prefer_final_fields
-  List<Isolate> _isolates = [];
+  List<Isolate?> _isolates = List.filled(1, null, growable: false);
   Nv21Image? lastFrame;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
@@ -199,7 +199,7 @@ class _MyHomePageState extends State<MyHomePage> {
           final bool isIdentical =
               _compareImages(lastFrame!, image as Nv21Image);
           if (isIdentical) {
-            //return;
+            return;
           }
           lastFrame = image;
           image = await (image).toJpeg();
@@ -214,6 +214,7 @@ class _MyHomePageState extends State<MyHomePage> {
           () async {
             if (!isUsingCamera) {
               for (var isolate in _isolates) {
+                if (isolate == null) continue;
                 isolate.kill(priority: Isolate.immediate);
               }
               await controller.analysisController?.imageSubscription?.cancel();
@@ -227,7 +228,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 FloatingActionButton(
                     heroTag: "camera",
                     onPressed: () async {
-                        printDebug("Detecting press...");
+                      printDebug("Detecting press...");
                       if (isUsingCamera) {
                         _cleanUp();
                         await controller.analysisController?.imageSubscription
@@ -386,6 +387,8 @@ class _MyHomePageState extends State<MyHomePage> {
         'nv21Image': imageIm,
       };
 
+      printDebug(detectedObjects);
+
       _performTaskInIsolate(params);
     }
   }
@@ -415,24 +418,44 @@ class _MyHomePageState extends State<MyHomePage> {
   /// This function is typically used to offload heavy computations from the
   /// main thread to improve application responsiveness.
   void _performTaskInIsolate(Map<String, dynamic> params) async {
-    _cleanUp();
-    final isolate = await Isolate.spawn(_taskEntryPoint, params);
-    isolate.setErrorsFatal(false);
-    printDebug("Started task in isolate #${_isolates.length}.");
-    _isolates.add(isolate);
+    if (_isolates[0] != null && isIsolateActive(_isolates[0]!)) {
+      printDebug('Max isolates running');
+      return;
+    }
+
+    final receivePort = ReceivePort();
+    try {
+      params['port'] = receivePort.sendPort;
+      final isolate = await Isolate.spawn(_taskEntryPoint, params);
+      isolate.setErrorsFatal(false);
+
+      receivePort.listen((message) {
+        if (message is SendPort) {
+          final SendPort isolateSendPort = message;
+
+          isolateSendPort.send(params);
+        } else if (message == 'done') {
+          printDebug('Isolate is done.');
+          _isolates[0] = null;
+          receivePort.close();
+        }
+      });
+
+      _isolates[0] = (isolate);
+    } catch (e) {
+      printDebug('Error spawning isolate: $e');
+    }
   }
 
   void _cleanUp() {
     if (_isolates.length >= 2) {
-      // Create a copy of the list to avoid modification during iteration
-      final isolatesToKill = List<Isolate>.from(_isolates);
-    
+      final isolatesToKill = List<Isolate?>.from(_isolates);
+
       for (final isolate in isolatesToKill) {
         try {
           // ignore: unnecessary_null_comparison
           if (isolate == null) {
             printDebug("Isolate is null.");
-            _isolates.remove(isolate);
             continue;
           }
           try {
@@ -457,6 +480,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final weight = params['weight'];
     final nv21Image = params['nv21Image'];
     priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
+    params['port'].send('done');
   }
 
   /// Analyzes detected objects and determines the object with the maximum weight.
