@@ -1,7 +1,9 @@
 import 'package:basera/help_utilities.dart';
+import 'package:flutter/services.dart';
 import 'text_to_speech.dart' as tts;
 import 'package:image/image.dart';
 import 'vqa.dart';
+
 import 'dart:collection';
 
 class PriorityItem {
@@ -25,7 +27,7 @@ class PriorityItem {
   late DateTime itemInitializedAt;
   static tts.TextToSpeechService ttsService = tts.TextToSpeechService();
   final String? directionMoving;
-  final Image frame; 
+  final Image frame;
 
   PriorityItem({
     required this.isPersonMoving,
@@ -34,7 +36,7 @@ class PriorityItem {
     required this.weight,
     required this.direction,
     this.directionMoving,
-    required this.frame, 
+    required this.frame,
   }) {
     ttsService.initTTS();
     itemInitializedAt = DateTime.now();
@@ -68,10 +70,11 @@ class PriorityItem {
     int height = otherFrame.height;
     int diffPixels = 0;
     int totalPixels = width * height;
-    
+
     // Calculate the step to sample pixels for efficiency
-    int step = totalPixels ~/ 500;  // Adjust 500 to control accuracy and performance
-    step = step > 0 ? step : 1;  // Ensure step is at least 1
+    int step =
+        totalPixels ~/ 500; // Adjust 500 to control accuracy and performance
+    step = step > 0 ? step : 1; // Ensure step is at least 1
 
     for (int i = 0; i < totalPixels; i += step) {
       int x = i % width;
@@ -81,27 +84,29 @@ class PriorityItem {
       }
     }
 
-    const int threshold = 1000;  // The threshold for significant change in pixel count
-    printDebug("diffPixels: $diffPixels");
+    const int threshold =
+        1000; // The threshold for significant change in pixel count
     return diffPixels * step > threshold;
   }
 
   static Future<void> performStaticAction(String weight, Image frame) async {
-    printDebug("Performing action with weight $weight");
 
     if (weight == 'HIGH') {
-        //final caption = await VQA().caption(frame);
-        //printDebug("Caption: $caption");
-        //if (caption == null) {
-        //  return;
-        //}
-        await ttsService.speak("مرحبا");
+      //final caption = await VQA().caption(frame);
+      //printDebug("Caption: $caption");
+      //if (caption == null) {
+      //  return;
+      //}
+      //HapticFeedback.heavyImpact();
+      //await ttsService.speak("مرحبا");
     } else if (weight == 'MEDIUM') {
+      //HapticFeedback.mediumImpact();
       // Perform medium priority action
+    } else if (weight == 'LOW') {
+      //HapticFeedback.lightImpact();
+      // Perform low priority action
     }
   }
-  
-
 }
 
 class TaskQueue {
@@ -110,10 +115,12 @@ class TaskQueue {
   void addTask(PriorityItem item) {
     if (_queue.isNotEmpty) {
       PriorityItem firstItem = _queue.last;
-
-      if (!item.hasSignificantChange(firstItem) || DateTime.now().difference(firstItem.itemInitializedAt).inSeconds < 10) {
+      printDebug(_queue);
+      if (!item.hasSignificantChange(firstItem) ||
+          DateTime.now().difference(firstItem.itemInitializedAt).inSeconds <
+              10) {
         printDebug("No significant change in frame. Skipping task.");
-        return; 
+        return;
       }
     }
     _queue.add(item);

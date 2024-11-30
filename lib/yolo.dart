@@ -112,6 +112,9 @@ Future<List<Map<String, dynamic>>> runObjectDetectionInBackground(
 Future<List<Map<String, dynamic>>> runObjectDetection(
     Map<String, dynamic> message) async {
   try {
+    if (message['image'] == null || message['interpreter'] == null) {
+      return [];
+    }
     final result = await _detectObjects(
         await compute(_processImageForDetection, [
           message['image'],
@@ -120,8 +123,12 @@ Future<List<Map<String, dynamic>>> runObjectDetection(
         ]),
         message['interpreter']);
 
+    if (result == null) {
+      return [];
+    }
+
     final detections = postprocessor(
-      result!,
+      result,
       [message['width'], message['height']],
       0.35,
       0.35,

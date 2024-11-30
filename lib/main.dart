@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
 import 'package:image/image.dart' as img;
@@ -16,6 +18,13 @@ DateTime lastImageTime = DateTime.now();
 void main() async {
   OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
+  final rootIsolateToken = RootIsolateToken.instance;
+  if (rootIsolateToken != null) {
+    BackgroundIsolateBinaryMessenger.ensureInitialized(rootIsolateToken);
+  } else {
+    printDebug(
+        "Error: Root Isolate Token is null. Ensure this runs on the main isolate.");
+  }
   labels = await yolo.loadLabels();
 
   runApp(const MyApp());
@@ -81,6 +90,9 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isPersonMoving = false;
   bool _isStreamingPort = false;
   Uint8List? _img;
+  // ignore: prefer_final_fields
+  List<Isolate> _isolates = [];
+  Nv21Image? lastFrame;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
 
@@ -178,16 +190,32 @@ class _MyHomePageState extends State<MyHomePage> {
           if (!isUsingCamera) {
             return;
           }
+          if (lastFrame == null) {
+            lastFrame = image as Nv21Image;
+            return;
+          }
+
+
+          final bool isIdentical = _compareImages(lastFrame!, image as Nv21Image);
+          if (isIdentical) {
+            printDebug("Same frame. Skipping task.");
+            return;
+          }
+          lastFrame = image;
+          image = await (image).toJpeg();
           _readDataFromCameraStream(image as JpegImage);
         },
         imageAnalysisConfig: AnalysisConfig(
-          androidOptions: const AndroidAnalysisOptions.jpeg(width: 480),
+          androidOptions: const AndroidAnalysisOptions.nv21(width: 480),
           autoStart: true,
-          maxFramesPerSecond: 10,
+          maxFramesPerSecond: 5,
         ),
         builder: (controller, preview) {
           () async {
             if (!isUsingCamera) {
+              for (var isolate in _isolates) {
+                isolate.kill(priority: Isolate.immediate);
+              }
               await controller.analysisController?.imageSubscription?.cancel();
               controller.analysisController?.imageSubscription = null;
             }
@@ -200,6 +228,11 @@ class _MyHomePageState extends State<MyHomePage> {
                     heroTag: "camera",
                     onPressed: () async {
                       if (isUsingCamera) {
+                        for (var isolate in _isolates) {
+                          // ignore: unnecessary_null_comparison (sanity check)
+                          if (isolate == null) continue;
+                          isolate.kill(priority: Isolate.immediate);
+                        }
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
                         controller.analysisController?.imageSubscription = null;
@@ -327,7 +360,6 @@ class _MyHomePageState extends State<MyHomePage> {
               };
               await compute(_performActionInBackground, params);
             }
-
           } else {
             printDebug('Failed to decode JPEG image');
             printDebug('Image data length: ${imageData.length}');
@@ -356,9 +388,21 @@ class _MyHomePageState extends State<MyHomePage> {
         'weight': maxObject.measureWeight(),
         'nv21Image': imageIm,
       };
-      await compute(_performActionInBackground, params);
+
+      _performTaskInIsolate(params);
     }
-    printDebug(detectedObjects);
+  }
+
+  void _performTaskInIsolate(Map<String, dynamic> params) async {
+    final isolate = await Isolate.spawn(_taskEntryPoint, params);
+    isolate.setErrorsFatal(false);
+    _isolates.add(isolate);
+  }
+
+  static void _taskEntryPoint(Map<String, dynamic> params) {
+    final weight = params['weight'];
+    final nv21Image = params['nv21Image'];
+    priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
   }
 
   /// Analyzes detected objects and determines the object with the maximum weight.
@@ -377,7 +421,8 @@ class _MyHomePageState extends State<MyHomePage> {
   ///
   /// - Returns: The `PriorityItem` object with the highest weight among the
   ///   detected objects, or null if no objects are detected.
-  priority_manager.PriorityItem? _weightOfObjects(List<Map<String, dynamic>> detectedObjects, img.Image image) {
+  priority_manager.PriorityItem? _weightOfObjects(
+      List<Map<String, dynamic>> detectedObjects, img.Image image) {
     var maxWeight = 'LOW'; // Variable to track the maximum weight found
     priority_manager.PriorityItem?
         maxObject; // Variable to store the object with the highest weight
@@ -394,13 +439,12 @@ class _MyHomePageState extends State<MyHomePage> {
 
       // Create a PriorityItem for the current object
       priority_manager.PriorityItem item = priority_manager.PriorityItem(
-        label: label,
-        isPersonMoving: isPersonMoving,
-        isObjectMoving: false,
-        weight: 1.0,
-        direction: '',
-        frame: image
-      );
+          label: label,
+          isPersonMoving: isPersonMoving,
+          isObjectMoving: false,
+          weight: 1.0,
+          direction: '',
+          frame: image);
 
       // Check if the object was present in the previous frame
       if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
@@ -455,5 +499,34 @@ class _MyHomePageState extends State<MyHomePage> {
       'interpreter': _interpreter
     });
     return detectedObjects;
+  }
+
+  bool _compareImages(Nv21Image lastFrame, Nv21Image currentFrame) {
+    // Check if dimensions are the same
+    if (lastFrame.width != currentFrame.width ||
+        lastFrame.height != currentFrame.height) {
+      return false; // Different dimensions mean images are not the same
+    }
+
+    // Compare pixel data
+    final lastPixels = lastFrame.bytes;
+    final currentPixels = currentFrame.bytes;
+
+    if (lastPixels.length != currentPixels.length) {
+      return false; // Different data size means images are not the same
+    }
+
+    // Calculate the difference
+    int differenceCount = 0;
+    const int tolerance = 10; // Allow some pixel differences
+    for (int i = 0; i < lastPixels.length; i++) {
+      if ((lastPixels[i] - currentPixels[i]).abs() > tolerance) {
+        differenceCount++;
+      }
+    }
+
+    printDebug("Difference count: $differenceCount");
+    const int differenceThreshold = 1000;
+    return differenceCount < differenceThreshold;
   }
 }
