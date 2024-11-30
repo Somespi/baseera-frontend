@@ -295,6 +295,7 @@ Future<List<OrtValue?>?> _detectObjects(
   }
   // ignore: unnecessary_null_comparison
   if (interpreter == null ||
+      // ignore: unnecessary_null_comparison
       interpreter.address == null ||
       interpreter.address == 0) {
     return null;

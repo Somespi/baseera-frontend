@@ -410,52 +410,6 @@ class _MyHomePageState extends State<MyHomePage> {
       return false;
     }
   }
-
-  /// Spawns a new isolate to perform a task with the provided parameters.
-  ///
-  /// This function manages a pool of isolates, ensuring that no more than
-  /// three isolates are running concurrently. If the limit is exceeded, the
-  /// oldest isolate is terminated before starting a new one. The task to be
-  /// performed in the isolate is specified by `_taskEntryPoint`, and the
-  /// `params` map contains the necessary parameters for the task. Errors in
-  /// the isolate are set to non-fatal to allow recovery without crashing the
-  /// main application.
-  ///
-  /// - Parameters:
-  ///   - params: A map containing the parameters required for the task.
-  ///
-  /// This function is typically used to offload heavy computations from the
-  /// main thread to improve application responsiveness.
-  void _performTaskInIsolate(Map<String, dynamic> params) async {
-    if (_isolates[0] != null && isIsolateActive(_isolates[0]!)) {
-      printDebug('Max isolates running');
-      return;
-    }
-
-    final receivePort = ReceivePort();
-    try {
-      params['port'] = receivePort.sendPort;
-      final isolate = await Isolate.spawn(_taskEntryPoint, params);
-      isolate.setErrorsFatal(false);
-
-      receivePort.listen((message) {
-        if (message is SendPort) {
-          final SendPort isolateSendPort = message;
-
-          isolateSendPort.send(params);
-        } else if (message == 'done') {
-          printDebug('Isolate is done.');
-          _isolates[0] = null;
-          receivePort.close();
-        }
-      });
-
-      _isolates[0] = (isolate);
-    } catch (e) {
-      printDebug('Error spawning isolate: $e');
-    }
-  }
-
   void _cleanUp() {
     if (_isolates.length >= 2) {
       final isolatesToKill = List<Isolate?>.from(_isolates);
