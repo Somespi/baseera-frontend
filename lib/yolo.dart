@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
 import 'help_utilities.dart';
+// ignore: implementation_imports
+import 'package:onnxruntime/src/ort_isolate_session.dart';
 
 /// Loads the COCO labels from the assets/models/labels.txt file.
 ///
@@ -94,6 +96,11 @@ Future<List<Map<String, dynamic>>> runObjectDetection(
       640,
       message['labels'],
     );
+
+    for (final res in result) {
+      if (res == null) continue;
+      res.release();
+    }
 
     return detections;
   } catch (e) {
@@ -273,26 +280,36 @@ List<Map<String, dynamic>> postprocessor(
   }).toList();
 }
 
+/// Runs object detection on the provided image using the YOLO model.
+///
+/// The function expects the first element of the [inout] list to be a valid
+/// input tensor. The tensor is converted to an OrtValueTensor and is passed to
+/// the YOLO model for object detection. The result is a list of OrtValue objects
+/// representing the output of the model. If the input tensor is invalid or null,
+/// an ArgumentError is thrown. If the interpreter is null or invalid, the
+/// function returns null.
 Future<List<OrtValue?>?> _detectObjects(
     List<dynamic> inout, OrtSession interpreter) async {
   if (inout.isEmpty || inout[0] == null) {
     throw ArgumentError("Input tensor is invalid or null.");
   }
   // ignore: unnecessary_null_comparison
-  if (interpreter == null) {
+  if (interpreter == null ||
+      interpreter.address == null ||
+      interpreter.address == 0) {
     return null;
   }
+
   final inputOrt =
       OrtValueTensor.createTensorWithDataList(inout[0], [1, 3, 640, 640]);
   final inputs = {'images': inputOrt};
   final runOptions = OrtRunOptions();
   runOptions.unsetTerminate();
   runOptions.setRunLogSeverityLevel(0);
-  
-  final outputs = await interpreter.runAsync(runOptions, inputs);
+
+  final outputs =  interpreter.run(runOptions, inputs);
   runOptions.release();
   inputOrt.release();
-
   return outputs;
 }
 

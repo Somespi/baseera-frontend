@@ -158,6 +158,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _interpreter.release();
     await _serialportFlutterPlugin.close();
     await _port?.close();
+    OrtEnv.instance.release();
     _gyroscopeSubscription?.cancel();
     super.dispose();
   }
@@ -198,9 +199,8 @@ class _MyHomePageState extends State<MyHomePage> {
           final bool isIdentical =
               _compareImages(lastFrame!, image as Nv21Image);
           if (isIdentical) {
-            return;
+            //return;
           }
-          cleanupIsolates();
           lastFrame = image;
           image = await (image).toJpeg();
           _readDataFromCameraStream(image as JpegImage);
@@ -213,7 +213,6 @@ class _MyHomePageState extends State<MyHomePage> {
         builder: (controller, preview) {
           () async {
             if (!isUsingCamera) {
-              cleanupIsolates();
               for (var isolate in _isolates) {
                 isolate.kill(priority: Isolate.immediate);
               }
@@ -228,8 +227,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 FloatingActionButton(
                     heroTag: "camera",
                     onPressed: () async {
+                        printDebug("Detecting press...");
                       if (isUsingCamera) {
-                        cleanupIsolates();
+                        _cleanUp();
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
                         controller.analysisController?.imageSubscription = null;
@@ -399,25 +399,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void cleanupIsolates() {
-    // _isolates.removeWhere((isolate) {
-    //   try {
-    //     // ignore: unnecessary_null_comparison
-    //     if (isolate == null) {
-    //       return false;
-    //     }
-
-    //     if (!isIsolateActive(isolate)) {
-    //       return false;
-    //     }
-
-    //     return false;
-    //   } catch (e) {
-    //     return true;
-    //   }
-    // });
-  }
-
   /// Spawns a new isolate to perform a task with the provided parameters.
   ///
   /// This function manages a pool of isolates, ensuring that no more than
@@ -434,11 +415,18 @@ class _MyHomePageState extends State<MyHomePage> {
   /// This function is typically used to offload heavy computations from the
   /// main thread to improve application responsiveness.
   void _performTaskInIsolate(Map<String, dynamic> params) async {
-    cleanupIsolates();
+    _cleanUp();
+    final isolate = await Isolate.spawn(_taskEntryPoint, params);
+    isolate.setErrorsFatal(false);
+    printDebug("Started task in isolate #${_isolates.length}.");
+    _isolates.add(isolate);
+  }
+
+  void _cleanUp() {
     if (_isolates.length >= 2) {
       // Create a copy of the list to avoid modification during iteration
       final isolatesToKill = List<Isolate>.from(_isolates);
-
+    
       for (final isolate in isolatesToKill) {
         try {
           // ignore: unnecessary_null_comparison
@@ -463,10 +451,6 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
     }
-    final isolate = await Isolate.spawn(_taskEntryPoint, params);
-    isolate.setErrorsFatal(false);
-    printDebug("Started task in isolate #${_isolates.length}.");
-    _isolates.add(isolate);
   }
 
   static void _taskEntryPoint(Map<String, dynamic> params) {
