@@ -2,13 +2,11 @@ import 'dart:io';
 import 'dart:math';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
 import 'help_utilities.dart';
 // ignore: implementation_imports
-import 'package:onnxruntime/src/ort_isolate_session.dart';
 
 /// Loads the COCO labels from the assets/models/labels.txt file.
 ///

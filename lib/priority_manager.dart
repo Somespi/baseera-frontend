@@ -1,8 +1,6 @@
 import 'package:basera/help_utilities.dart';
-import 'package:flutter/services.dart';
 import 'text_to_speech.dart' as tts;
 import 'package:image/image.dart';
-import 'vqa.dart';
 
 import 'dart:collection';
 
