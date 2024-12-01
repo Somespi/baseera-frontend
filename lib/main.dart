@@ -21,6 +21,15 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 
+var assistiveUnits = [
+  {
+    "name": "خلية برايل",
+    "isUsing": false,
+    "description": "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
+    "bleAddress": "3C:84:27:C3:33:99",
+  }
+];
+
 void main() async {
   OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
@@ -325,7 +334,18 @@ class _MyHomePageState extends State<MyHomePage> {
                             ])),
                       ),
                     ),
-                  )
+                  ),
+                  const SizedBox(height: 30.0),
+                  Text(
+                    "الوحدات المساعدة (AUs)",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Changa',
+                      color: Color.fromARGB(255, 168, 168, 168),
+                      fontSize: 14,
+                      
+                    )
+                  ),
                 ],
               ),
             ),
