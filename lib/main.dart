@@ -15,6 +15,7 @@ import 'text_to_speech.dart';
 import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
 import 'package:camerawesome/camerawesome_plugin.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
@@ -64,10 +65,14 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'بصيرة',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'بصيرة'),
+      home: Directionality(
+        // add this
+        textDirection: TextDirection.rtl, // set this property
+        child: const MyHomePage(title: 'بصيرة'),
+      ),
     );
   }
 }
@@ -91,12 +96,10 @@ class _MyHomePageState extends State<MyHomePage> {
   late OrtSession _interpreter;
   // ignore: unused_field
   UsbPort? _port;
-  String? _out;
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
   bool _isStreamingPort = false;
-  Uint8List? _img;
   // ignore: prefer_final_fields
   List<Isolate?> _isolates = List.filled(1, null, growable: false);
   Nv21Image? lastFrame;
@@ -188,7 +191,11 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.title)),
+        appBar: AppBar(
+            title: Text(
+          widget.title,
+          style: TextStyle(fontFamily: 'Changa'),
+        )),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -229,6 +236,15 @@ class _MyHomePageState extends State<MyHomePage> {
             }
           }();
           return Scaffold(
+            appBar: AppBar(
+              title: Text(
+                widget.title,
+                style: TextStyle(
+                    fontFamily: 'Changa',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20),
+              ),
+            ),
             floatingActionButton: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -269,15 +285,47 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ],
             ),
-            body: Center(
+            body: Padding(
+              padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  _out != null ? Text(_out!) : const Text("No data"),
-                  _img != null
-                      ? Image.memory(_img!)
-                      // : isUsingCamera
-                      //     ? CameraPreview(controller)
-                      : const Text("No image"),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(15.0),
+                    onTap: _askQuestion,
+                    child: Card(
+                      color: Color.fromRGBO(236, 246, 255, 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                        side: const BorderSide(
+                          color: Color.fromRGBO(0, 76, 168, 1),
+                          width: 0.7,
+                        ),
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Flex(direction: Axis.horizontal, children: [
+                              Image(
+                                image: AssetImage('assets/icons/eye.png'),
+                                width: 100.0,
+                                height: 100.0,
+                              ),
+                              //const Spacer(),
+                              Center(
+                                child: Text(
+                                  "استفسر عن ما يحيطك",
+                                  style: const TextStyle(
+                                    fontFamily: 'Changa',
+                                    color: Colors.black,
+                                    fontSize: 20,
+                                  ),
+                                ),
+                              ),
+                            ])),
+                      ),
+                    ),
+                  )
                 ],
               ),
             ),
@@ -591,5 +639,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
     const int differenceThreshold = 50419;
     return differenceCount < differenceThreshold;
+  }
+
+  void _askQuestion() {
+    //TODO: implement logic
   }
 }

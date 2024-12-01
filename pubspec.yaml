@@ -53,6 +53,7 @@ dependencies:
   usb_serial: ^0.5.2
   camera: ^0.11.0+2
   onnxruntime: ^1.4.1
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -92,10 +93,10 @@ flutter:
   # "family" key with the font family name, and a "fonts" key with a
   # list giving the asset and other descriptors for the font. For
   # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
+  fonts:
+    - family: Changa
+      fonts:
+        - asset: assets/fonts/Changa-VariableFont_wght.ttf
   #       - asset: fonts/Schyler-Italic.ttf
   #         style: italic
   #   - family: Trajan Pro
@@ -107,9 +108,7 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
   assets:
-    - assets/models/yolov10n_float32.tflite
     - assets/models/labels.txt
     - assets/models/yolo_model.onnx
-    - assets/models/mobilenet_ssd_v2_coco_quant_postprocess.tflite
-    - assets/models/yolov5.tflite
-    - assets/test.jpg
+    - assets/icons/eye.png
+    - assets/fonts/Changa-VariableFont_wght.ttf
