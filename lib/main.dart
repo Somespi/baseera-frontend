@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:basera/ocr/ocr.dart';
 import 'package:basera/speech_to_text.dart';
 import 'package:basera/vqa.dart';
 import 'package:flutter/foundation.dart';
@@ -123,6 +124,8 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
   priority_manager.PriorityItem? _lastItem;
+  late List<String> terms;
+
   @override
 
   /// Initializes the object detection model and starts listening to the
@@ -151,6 +154,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     _interpreter = await yolo.loadModel();
+    terms = await Ocr.loadTerms();
 
     setState(() {
       _isLoading = false;
@@ -741,6 +745,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _askQuestion() async {
     await speechToTextService.startListening((text) async {
       printDebug(text);
+      printDebug(Ocr.isRequestingOCR(text, terms));
         await ttsService.speak(await VQA().ask(
             "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
             yolo.fromJpegToImg(_currentImg!)) as String);

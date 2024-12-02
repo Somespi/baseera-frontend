@@ -122,5 +122,7 @@ flutter:
     - assets/icons/braille.png
     - assets/icons/
     - assets/models/
+    - assets/
+    - assets/ocr/ocr_phrases.txt
     - assets/models/vocos22.onnx
     - assets/models/mixer128.onnx
