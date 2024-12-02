@@ -25,7 +25,9 @@ var assistiveUnits = [
   {
     "name": "خلية برايل",
     "isUsing": false,
-    "description": "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
+    "image": "assets/assistive_units/braille.png",
+    "description":
+        "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
     "bleAddress": "3C:84:27:C3:33:99",
   }
 ];
@@ -336,16 +338,64 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                   ),
                   const SizedBox(height: 30.0),
-                  Text(
-                    "الوحدات المساعدة (AUs)",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Changa',
-                      color: Color.fromARGB(255, 168, 168, 168),
-                      fontSize: 14,
-                      
-                    )
-                  ),
+                  Text("الوحدات المساعدة (AUs)",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Changa',
+                        color: Color.fromARGB(255, 168, 168, 168),
+                        fontSize: 14,
+                      )),
+                  const SizedBox(height: 10.0),
+                  Expanded(
+                    child: GridView.count(
+                      crossAxisCount: 2,
+                      children: assistiveUnits.map((au) {
+                        return Card(
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15.0),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  au['name'] as String,
+                                  style: const TextStyle(
+                                    fontFamily: 'Changa',
+                                    fontSize: 20,
+                                  ),
+                                ),
+                                const SizedBox(height: 8.0),
+                                Image(
+                                  image: AssetImage(au['image'] as String),
+                                  width: 100.0,
+                                ),
+                                const SizedBox(height: 5.0),
+                                ElevatedButton(
+                                  onPressed: () => _connectToAU(au),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        const Color.fromRGBO(46, 139, 255, 1.0),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10.0),
+                                    ),
+                                    fixedSize: const Size(100, 30),
+                                  ),
+                                  child: Text(
+                                    "اتصل",
+                                    style: GoogleFonts.ibmPlexSansArabic(
+                                        textStyle: TextStyle(
+                                            fontSize: 10, color: Colors.white)),
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  )
                 ],
               ),
             ),
@@ -662,6 +712,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _askQuestion() {
+    //TODO: implement logic
+  }
+
+  _connectToAU(Map<String, Object> au) {
     //TODO: implement logic
   }
 }

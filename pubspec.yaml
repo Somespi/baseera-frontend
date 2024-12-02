@@ -112,3 +112,4 @@ flutter:
     - assets/models/yolo_model.onnx
     - assets/icons/eye.png
     - assets/fonts/Changa-VariableFont_wght.ttf
+    - assets/assistive_units/braille.png
