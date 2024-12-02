@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:basera/speech_to_text.dart';
 import 'package:basera/vqa.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -16,16 +17,19 @@ import 'yolo.dart' as yolo;
 import 'priority_manager.dart' as priority_manager;
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
+SpeechToTextService speechToTextService = SpeechToTextService();
 
 var assistiveUnits = [
   {
     "name": "خلية برايل",
     "isUsing": false,
-    "image": "assets/assistive_units/braille.png",
+    "image": "assets/icons/braille.png",
     "description":
         "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
     "bleAddress": "3C:84:27:C3:33:99",
@@ -45,6 +49,7 @@ void main() async {
   }
   await ttsService.initTTS();
   labels = await yolo.loadLabels();
+  await speechToTextService.initialize();
 
   runApp(const MyApp());
 }
@@ -107,6 +112,7 @@ class _MyHomePageState extends State<MyHomePage> {
   late OrtSession _interpreter;
   // ignore: unused_field
   UsbPort? _port;
+  JpegImage? _currentImg;
   Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
@@ -128,6 +134,7 @@ class _MyHomePageState extends State<MyHomePage> {
     super.initState();
     _initializeModel();
     _initializeGyroscope();
+    getPermissions();
   }
 
   /// Initializes the object detection model.
@@ -184,6 +191,14 @@ class _MyHomePageState extends State<MyHomePage> {
     super.dispose();
   }
 
+  Future getPermissions() async {
+    try {
+      await Permission.bluetooth.request();
+    } catch (e) {
+      printDebug(e.toString());
+    }
+  }
+
   @override
 
   /// Builds the main home page widget.
@@ -228,7 +243,9 @@ class _MyHomePageState extends State<MyHomePage> {
           }
           lastFrame = image;
           image = await (image).toJpeg();
+          _currentImg = image as JpegImage?;
           _readDataFromCameraStream(image as JpegImage);
+          await Future.delayed(const Duration(milliseconds: 1000));
         },
         imageAnalysisConfig: AnalysisConfig(
           androidOptions: const AndroidAnalysisOptions.nv21(width: 480),
@@ -247,6 +264,7 @@ class _MyHomePageState extends State<MyHomePage> {
             }
           }();
           return Scaffold(
+            backgroundColor: Color.fromRGBO(243, 243, 243, 1),
             appBar: AppBar(
               title: Text(
                 widget.title,
@@ -302,7 +320,15 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   InkWell(
                     borderRadius: BorderRadius.circular(15.0),
-                    onTap: _askQuestion,
+                    onTap: () async {
+                      printDebug(
+                          "Is listening: ${speechToTextService.isListening}");
+                      if (speechToTextService.isListening) {
+                        await speechToTextService.stopListening();
+                      } else {
+                        await _askQuestion();
+                      }
+                    },
                     child: Card(
                       color: Color.fromRGBO(236, 246, 255, 1),
                       shape: RoundedRectangleBorder(
@@ -361,17 +387,18 @@ class _MyHomePageState extends State<MyHomePage> {
                               children: [
                                 Text(
                                   au['name'] as String,
-                                  style: const TextStyle(
-                                    fontFamily: 'Changa',
-                                    fontSize: 20,
+                                  style: GoogleFonts.rubik(
+                                    textStyle: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 20),
                                   ),
                                 ),
-                                const SizedBox(height: 8.0),
+                                //const SizedBox(height: 8.0),
                                 Image(
                                   image: AssetImage(au['image'] as String),
                                   width: 100.0,
                                 ),
-                                const SizedBox(height: 5.0),
+                                //const SizedBox(height: 5.0),
                                 ElevatedButton(
                                   onPressed: () => _connectToAU(au),
                                   style: ElevatedButton.styleFrom(
@@ -386,9 +413,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                     "اتصل",
                                     style: GoogleFonts.ibmPlexSansArabic(
                                         textStyle: TextStyle(
-                                            fontSize: 10, color: Colors.white)),
+                                            fontSize: 16, color: Colors.white)),
                                   ),
-                                )
+                                ),
                               ],
                             ),
                           ),
@@ -520,7 +547,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   .inSeconds >
               5) {
         _lastItem = maxObject;
-        _taskEntryPoint(params);
+        await _taskEntryPoint(params);
       }
     }
   }
@@ -707,15 +734,38 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    const int differenceThreshold = 50419;
+    const int differenceThreshold = 1000419;
     return differenceCount < differenceThreshold;
   }
 
-  void _askQuestion() {
-    //TODO: implement logic
+  Future<void> _askQuestion() async {
+    await speechToTextService.startListening((text) async {
+      printDebug(text);
+        await ttsService.speak(await VQA().ask(
+            "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
+            yolo.fromJpegToImg(_currentImg!)) as String);
+    });
   }
 
-  _connectToAU(Map<String, Object> au) {
-    //TODO: implement logic
+  _connectToAU(Map<String, Object> au) async {
+    var subscription = FlutterBluePlus.onScanResults.listen(
+      (results) {
+        ScanResult r = results.last;
+        printDebug(
+            '${r.device.remoteId}: "${r.advertisementData.advName}" found!');
+      },
+      onError: (e) => printDebug(e),
+    );
+
+    FlutterBluePlus.cancelWhenScanComplete(subscription);
+    await FlutterBluePlus.adapterState
+        .where((val) => val == BluetoothAdapterState.on)
+        .first;
+
+    await FlutterBluePlus.startScan(
+        withServices: [Guid("180D")], timeout: Duration(seconds: 5));
+
+    var device =
+        await FlutterBluePlus.isScanning.where((val) => val == false).first;
   }
 }

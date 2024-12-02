@@ -1,3 +1,4 @@
+import 'package:basera/help_utilities.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class SpeechToTextService {
@@ -22,6 +23,8 @@ class SpeechToTextService {
         _text = result.recognizedWords;
         onResult(_text); 
       },
+      listenFor: Duration(seconds: 2),
+      localeId: 'en_GB',
     );
     _isListening = true;
   }

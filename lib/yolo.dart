@@ -88,8 +88,8 @@ Future<List<Map<String, dynamic>>> runObjectDetection(
     final detections = postprocessor(
       result,
       [message['width'], message['height']],
-      0.35,
-      0.35,
+      0.45,
+      0.45,
       640,
       640,
       message['labels'],

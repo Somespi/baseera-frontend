@@ -16,7 +16,7 @@ class VQA {
   /// "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC."
   ///
   /// The function returns null if the AI model fails to generate an answer.
-  Future<String?> ask(String question, dynamic image) async {
+  Future<String?> ask(String question, Image image) async {
     final prompt =
         "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC.";
     final content = [
