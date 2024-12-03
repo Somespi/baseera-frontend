@@ -1,35 +1,36 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+
 import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/vqa.dart';
+import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image/image.dart' as img;
+import 'package:onnxruntime/onnxruntime.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
-import 'package:image/image.dart' as img;
-import 'package:flutter/material.dart';
-import 'package:onnxruntime/onnxruntime.dart';
 import 'package:usb_serial/usb_serial.dart';
+
 import 'services/help_utilities.dart';
+import 'services/priority_manager.dart' as priority_manager;
 import 'services/text_to_speech.dart';
 import 'services/yolo.dart' as yolo;
-import 'services/priority_manager.dart' as priority_manager;
-import 'package:camerawesome/camerawesome_plugin.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
-const routes = <Widget?>[
-  null, 
-  DocumentsPage()
-];
+const routes = <Widget?>[null, DocumentsPage()];
+
+const titles = <String>["الصفحة الرئيسية", "المستندات"];
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -84,6 +85,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'بصيرة',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -229,7 +231,7 @@ class _MyHomePageState extends State<MyHomePage> {
       return Scaffold(
         appBar: AppBar(
             title: Text(
-          widget.title,
+          titles[_selectedIndex],
           style: TextStyle(fontFamily: 'Changa'),
         )),
         body: const Center(child: CircularProgressIndicator()),
@@ -296,7 +298,7 @@ class _MyHomePageState extends State<MyHomePage> {
             backgroundColor: Color.fromRGBO(243, 243, 243, 1),
             appBar: AppBar(
               title: Text(
-                widget.title,
+                titles[_selectedIndex],
                 style: TextStyle(
                     fontFamily: 'Changa',
                     fontWeight: FontWeight.bold,
@@ -345,114 +347,121 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             body: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: _selectedIndex != 0 ? routes[_selectedIndex]! : Column(
-                children:  [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(15.0),
-                    onTap: () async {
-                      await _askQuestion();
-                      //await speechToTextService.stopListening();
-                    },
-                    child: Card(
-                      color: Color.fromRGBO(236, 246, 255, 1),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15.0),
-                        side: const BorderSide(
-                          color: Color.fromRGBO(0, 76, 168, 1),
-                          width: 0.7,
-                        ),
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Flex(direction: Axis.horizontal, children: [
-                              Image(
-                                image: AssetImage('assets/icons/eye.png'),
-                                width: 100.0,
-                                height: 100.0,
+              child: _selectedIndex != 0
+                  ? routes[_selectedIndex]!
+                  : Column(
+                      children: [
+                        InkWell(
+                          borderRadius: BorderRadius.circular(15.0),
+                          onTap: () async {
+                            await _askQuestion();
+                            //await speechToTextService.stopListening();
+                          },
+                          child: Card(
+                            color: Color.fromRGBO(236, 246, 255, 1),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15.0),
+                              side: const BorderSide(
+                                color: Color.fromRGBO(0, 76, 168, 1),
+                                width: 0.7,
                               ),
-                              //const Spacer(),
-                              Center(
-                                child: Text(
-                                  "استفسر عن ما يحيطك",
-                                  style: GoogleFonts.rubik(
-                                    textStyle: const TextStyle(
-                                      color: Colors.black,
-                                      fontSize: 20,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ])),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 30.0),
-                  Text("الوحدات المساعدة (AUs)",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'Changa',
-                        color: Color.fromARGB(255, 168, 168, 168),
-                        fontSize: 14,
-                      )),
-                  const SizedBox(height: 10.0),
-                  Expanded(
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      children: assistiveUnits.map((au) {
-                        return Card(
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15.0),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  au['name'] as String,
-                                  style: GoogleFonts.rubik(
-                                    textStyle: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20),
-                                  ),
-                                ),
-                                //const SizedBox(height: 8.0),
-                                Image(
-                                  image: AssetImage(au['image'] as String),
-                                  width: 100.0,
-                                ),
-                                //const SizedBox(height: 5.0),
-                                ElevatedButton(
-                                  onPressed: () => _connectToAU(au),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        const Color.fromRGBO(46, 139, 255, 1.0),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10.0),
-                                    ),
-                                    fixedSize: const Size(100, 30),
-                                  ),
-                                  child: Text(
-                                    "اتصل",
-                                    style: GoogleFonts.ibmPlexSansArabic(
-                                        textStyle: TextStyle(
-                                            fontSize: 16, color: Colors.white)),
-                                  ),
-                                ),
-                              ],
+                            ),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Flex(
+                                      direction: Axis.horizontal,
+                                      children: [
+                                        Image(
+                                          image: AssetImage(
+                                              'assets/icons/eye.png'),
+                                          width: 100.0,
+                                          height: 100.0,
+                                        ),
+                                        //const Spacer(),
+                                        Center(
+                                          child: Text(
+                                            "استفسر عن ما يحيطك",
+                                            style: GoogleFonts.rubik(
+                                              textStyle: const TextStyle(
+                                                color: Colors.black,
+                                                fontSize: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ])),
                             ),
                           ),
-                        );
-                      }).toList(),
+                        ),
+                        const SizedBox(height: 30.0),
+                        Text("الوحدات المساعدة (AUs)",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Changa',
+                              color: Color.fromARGB(255, 168, 168, 168),
+                              fontSize: 14,
+                            )),
+                        const SizedBox(height: 10.0),
+                        Expanded(
+                          child: GridView.count(
+                            crossAxisCount: 2,
+                            children: assistiveUnits.map((au) {
+                              return Card(
+                                color: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15.0),
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        au['name'] as String,
+                                        style: GoogleFonts.rubik(
+                                          textStyle: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 20),
+                                        ),
+                                      ),
+                                      //const SizedBox(height: 8.0),
+                                      Image(
+                                        image:
+                                            AssetImage(au['image'] as String),
+                                        width: 100.0,
+                                      ),
+                                      //const SizedBox(height: 5.0),
+                                      ElevatedButton(
+                                        onPressed: () => _connectToAU(au),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color.fromRGBO(
+                                              46, 139, 255, 1.0),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(10.0),
+                                          ),
+                                          fixedSize: const Size(100, 30),
+                                        ),
+                                        child: Text(
+                                          "اتصل",
+                                          style: GoogleFonts.ibmPlexSansArabic(
+                                              textStyle: TextStyle(
+                                                  fontSize: 16,
+                                                  color: Colors.white)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        )
+                      ],
                     ),
-                  )
-                ],
-              ),
             ),
           );
-          
         });
   }
 
@@ -765,11 +774,20 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _askQuestion() async {
+    await speechToTextService.stopListening();
     await speechToTextService.startListening((text) async {
       if (Ocr.isRequestingOCR(text, terms)) {
+        if (_currentImg == null) {
+          await ttsService.speak("عذرا, يجب فتح الكَمِرا أولََا");
+        } else {
+          await ttsService.speak("يتم التحقق من الصورة");
+          final extracted =
+              await Ocr.performOcr(yolo.fromJpegToImg(_currentImg!));
+          printDebug(extracted);
+        }
       } else {
         if (_currentImg == null) {
-          await ttsService.speak("عذرا, يجب فتح الكاميرا أولََا");
+          await ttsService.speak("عذرا, يجب فتح الكَمِرا أولََا");
         } else {
           await ttsService.speak(await VQA().ask(
               "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
@@ -777,6 +795,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       printDebug(text);
+      
     });
     // await Future.delayed(Duration(seconds: 5, milliseconds: 2), () async {
     // });
