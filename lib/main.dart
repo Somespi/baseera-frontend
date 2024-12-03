@@ -90,6 +90,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        fontFamily: GoogleFonts.rubik().fontFamily,
       ),
       home: Directionality(
         // add this
@@ -435,17 +436,16 @@ class _MyHomePageState extends State<MyHomePage> {
                                       ElevatedButton(
                                         onPressed: () => _connectToAU(au),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color.fromRGBO(
-                                              46, 139, 255, 1.0),
+                                          backgroundColor:  const Color.fromARGB(255, 90, 181, 255),
                                           shape: RoundedRectangleBorder(
                                             borderRadius:
-                                                BorderRadius.circular(10.0),
+                                                BorderRadius.circular(8.0),
                                           ),
                                           fixedSize: const Size(100, 30),
                                         ),
                                         child: Text(
                                           "اتصل",
-                                          style: GoogleFonts.ibmPlexSansArabic(
+                                          style: GoogleFonts.rubik(
                                               textStyle: TextStyle(
                                                   fontSize: 16,
                                                   color: Colors.white)),
@@ -782,7 +782,7 @@ class _MyHomePageState extends State<MyHomePage> {
         } else {
           await ttsService.speak("يتم التحقق من الصورة");
           final extracted =
-          await Ocr.performOcr(yolo.fromJpegToImg(_currentImg!));
+          await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
           
           await ttsService.speak(extracted!);
           printDebug(extracted);
