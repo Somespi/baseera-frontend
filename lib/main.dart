@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/vqa.dart';
@@ -25,7 +26,10 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
-
+const routes = <Widget?>[
+  null, 
+  DocumentsPage()
+];
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -125,6 +129,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool isUsingCamera = false;
   priority_manager.PriorityItem? _lastItem;
   late List<String> terms;
+  int _selectedIndex = 0;
 
   @override
 
@@ -269,6 +274,25 @@ class _MyHomePageState extends State<MyHomePage> {
             }
           }();
           return Scaffold(
+            bottomNavigationBar: NavigationBar(
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+              selectedIndex: _selectedIndex,
+              destinations: const <NavigationDestination>[
+                NavigationDestination(
+                  icon: Icon(Icons.home),
+                  label: 'الرئيسية',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.document_scanner),
+                  label: 'المستندات',
+                ),
+              ],
+              onDestinationSelected: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
+            ),
             backgroundColor: Color.fromRGBO(243, 243, 243, 1),
             appBar: AppBar(
               title: Text(
@@ -321,8 +345,8 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
             body: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
+              child: _selectedIndex != 0 ? routes[_selectedIndex]! : Column(
+                children:  [
                   InkWell(
                     borderRadius: BorderRadius.circular(15.0),
                     onTap: () async {
@@ -352,10 +376,11 @@ class _MyHomePageState extends State<MyHomePage> {
                               Center(
                                 child: Text(
                                   "استفسر عن ما يحيطك",
-                                  style: const TextStyle(
-                                    fontFamily: 'Changa',
-                                    color: Colors.black,
-                                    fontSize: 20,
+                                  style: GoogleFonts.rubik(
+                                    textStyle: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 20,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -427,6 +452,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
           );
+          
         });
   }
 
@@ -741,14 +767,13 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _askQuestion() async {
     await speechToTextService.startListening((text) async {
       if (Ocr.isRequestingOCR(text, terms)) {
-        
       } else {
         if (_currentImg == null) {
           await ttsService.speak("عذرا, يجب فتح الكاميرا أولََا");
         } else {
           await ttsService.speak(await VQA().ask(
-            "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
-            yolo.fromJpegToImg(_currentImg!)) as String);
+              "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
+              yolo.fromJpegToImg(_currentImg!)) as String);
         }
       }
       printDebug(text);
