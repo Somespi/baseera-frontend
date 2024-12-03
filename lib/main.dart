@@ -769,7 +769,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    const int differenceThreshold = 1000419;
+    const int differenceThreshold = 800419;
     return differenceCount < differenceThreshold;
   }
 
@@ -782,7 +782,9 @@ class _MyHomePageState extends State<MyHomePage> {
         } else {
           await ttsService.speak("يتم التحقق من الصورة");
           final extracted =
-              await Ocr.performOcr(yolo.fromJpegToImg(_currentImg!));
+          await Ocr.performOcr(yolo.fromJpegToImg(_currentImg!));
+          
+          await ttsService.speak(extracted!);
           printDebug(extracted);
         }
       } else {

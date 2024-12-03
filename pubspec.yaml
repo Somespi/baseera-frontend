@@ -62,6 +62,7 @@ dependencies:
   text_analysis: ^1.0.0+2
   flutter_riverpod: ^2.6.1
   google_mlkit_text_recognition: ^0.8.1
+  flutter_tesseract_ocr: ^0.4.26
 
 dev_dependencies:
   flutter_test:
@@ -126,5 +127,7 @@ flutter:
     - assets/models/
     - assets/
     - assets/ocr/ocr_phrases.txt
-    - assets/models/vocos22.onnx
-    - assets/models/mixer128.onnx
+    - assets/tessdata/
+    - assets/tessdata/eng.traineddata
+    - assets/tessdata/ara.traineddata
+    - assets/tessdata_config.json
