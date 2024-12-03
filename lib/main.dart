@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
-import 'package:basera/ocr/ocr.dart';
-import 'package:basera/speech_to_text.dart';
-import 'package:basera/vqa.dart';
+import 'package:basera/services/ocr/ocr.dart';
+import 'package:basera/services/speech_to_text.dart';
+import 'package:basera/services/vqa.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -12,10 +12,10 @@ import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:usb_serial/usb_serial.dart';
-import 'help_utilities.dart';
-import 'text_to_speech.dart';
-import 'yolo.dart' as yolo;
-import 'priority_manager.dart' as priority_manager;
+import 'services/help_utilities.dart';
+import 'services/text_to_speech.dart';
+import 'services/yolo.dart' as yolo;
+import 'services/priority_manager.dart' as priority_manager;
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -191,6 +191,7 @@ class _MyHomePageState extends State<MyHomePage> {
     await _serialportFlutterPlugin.close();
     await _port?.close();
     OrtEnv.instance.release();
+    speechToTextService.dispose();
     _gyroscopeSubscription?.cancel();
     super.dispose();
   }
@@ -325,13 +326,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   InkWell(
                     borderRadius: BorderRadius.circular(15.0),
                     onTap: () async {
-                      printDebug(
-                          "Is listening: ${speechToTextService.isListening}");
-                      if (speechToTextService.isListening) {
-                        await speechToTextService.stopListening();
-                      } else {
-                        await _askQuestion();
-                      }
+                      await _askQuestion();
+                      //await speechToTextService.stopListening();
                     },
                     child: Card(
                       color: Color.fromRGBO(236, 246, 255, 1),
@@ -744,12 +740,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _askQuestion() async {
     await speechToTextService.startListening((text) async {
-      printDebug(text);
-      printDebug(Ocr.isRequestingOCR(text, terms));
-        await ttsService.speak(await VQA().ask(
+      if (Ocr.isRequestingOCR(text, terms)) {
+        
+      } else {
+        if (_currentImg == null) {
+          await ttsService.speak("عذرا, يجب فتح الكاميرا أولََا");
+        } else {
+          await ttsService.speak(await VQA().ask(
             "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
             yolo.fromJpegToImg(_currentImg!)) as String);
+        }
+      }
+      printDebug(text);
     });
+    // await Future.delayed(Duration(seconds: 5, milliseconds: 2), () async {
+    // });
   }
 
   _connectToAU(Map<String, Object> au) async {

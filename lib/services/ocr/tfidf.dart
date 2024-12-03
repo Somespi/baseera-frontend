@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:basera/ocr/document.dart';
+import 'package:basera/services/ocr/document.dart';
 
 
 class TfIdf {

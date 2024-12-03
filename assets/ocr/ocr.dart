@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:basera/help_utilities.dart';
+import 'package:basera/services/help_utilities.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart';
 import 'package:ocr_scan_text/ocr_scan_text.dart';

@@ -1,5 +1,6 @@
-import 'package:basera/help_utilities.dart';
+import 'package:basera/services/help_utilities.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:speech_to_text/speech_to_text.dart';
 
 class SpeechToTextService {
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -17,21 +18,20 @@ class SpeechToTextService {
   }
 
   // Start listening to speech
-  Future<void> startListening(Function(String) onResult) async {
-    await _speech.listen(
+  Future<dynamic> startListening(Function(String) onResult) async {
+    return await _speech.listen(
       onResult: (result) {
         _text = result.recognizedWords;
-        onResult(_text); 
+        onResult(_text);
       },
-      listenFor: Duration(seconds: 2),
-      localeId: 'en_GB',
+      listenOptions: stt.SpeechListenOptions(partialResults: false),
+      listenFor: Duration(seconds: 4, milliseconds: 500),
+      localeId: 'ar-SA',
     );
-    _isListening = true;
   }
 
   Future<void> stopListening() async {
     await _speech.stop();
-    _isListening = false;
   }
 
   void dispose() {
