@@ -1,15 +1,11 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui';
 import 'package:basera/services/vqa.dart';
-
-import 'scan_module.dart';
 import 'package:basera/services/help_utilities.dart';
 import 'package:basera/services/ocr/document.dart';
 import 'package:basera/services/ocr/tfidf.dart';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart';
-import 'package:ocr_scan_text/ocr_scan_text.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';

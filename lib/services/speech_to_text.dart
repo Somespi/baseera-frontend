@@ -1,10 +1,7 @@
-import 'package:basera/services/help_utilities.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:speech_to_text/speech_to_text.dart';
 
 class SpeechToTextService {
   final stt.SpeechToText _speech = stt.SpeechToText();
-  bool _isListening = false;
   String _text = "Say something...";
 
   Future<bool> initialize() async {
@@ -39,5 +36,4 @@ class SpeechToTextService {
   }
 
   String get text => _text;
-  bool get isListening => _isListening;
 }

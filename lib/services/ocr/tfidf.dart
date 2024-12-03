@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:basera/services/help_utilities.dart';
 import 'package:basera/services/ocr/document.dart';
 
 
@@ -68,13 +69,13 @@ class TfIdf {
   }
 
   void printTfIdfMatrix() {
-    print('Term\t${documents.map((d) => d.id).join('\t')}');
+    printDebug('Term\t${documents.map((d) => d.id).join('\t')}');
     for (var i = 0; i < terms.length; i++) {
       var row = [terms[i]];
       for (var j = 0; j < documents.length; j++) {
         row.add(tfIdfMatrix[j][i].toStringAsFixed(3));
       }
-      print(row.join('\t'));
+      printDebug(row.join('\t'));
     }
   }
 
