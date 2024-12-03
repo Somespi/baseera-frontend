@@ -436,7 +436,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                       ElevatedButton(
                                         onPressed: () => _connectToAU(au),
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor:  const Color.fromARGB(255, 90, 181, 255),
+                                          backgroundColor: const Color.fromARGB(
+                                              255, 90, 181, 255),
                                           shape: RoundedRectangleBorder(
                                             borderRadius:
                                                 BorderRadius.circular(8.0),
@@ -633,8 +634,8 @@ class _MyHomePageState extends State<MyHomePage> {
     if (weight == null || nv21Image == null) {
       return;
     }
+    HapticFeedback.mediumImpact();
     if (weight == 'HIGH') {
-      await HapticFeedback.heavyImpact();
       String? caption = await VQA().caption(nv21Image);
       if (caption == null) {
         printDebug("Caption is null");
@@ -643,7 +644,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService.speak(caption);
       }
     } else if (weight == 'MEDIUM') {
-      HapticFeedback.mediumImpact();
+      HapticFeedback.vibrate();
     }
     //priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
     //params['port'].send('done');
@@ -782,8 +783,8 @@ class _MyHomePageState extends State<MyHomePage> {
         } else {
           await ttsService.speak("يتم التحقق من الصورة");
           final extracted =
-          await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
-          
+              await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
+
           await ttsService.speak(extracted!);
           printDebug(extracted);
         }
@@ -797,7 +798,6 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       printDebug(text);
-      
     });
     // await Future.delayed(Duration(seconds: 5, milliseconds: 2), () async {
     // });
