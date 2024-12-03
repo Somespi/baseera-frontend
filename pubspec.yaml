@@ -63,6 +63,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   google_mlkit_text_recognition: ^0.8.1
   flutter_tesseract_ocr: ^0.4.26
+  ar_flutter_plugin_flutterflow: ^0.7.55
 
 dev_dependencies:
   flutter_test:
@@ -131,3 +132,4 @@ flutter:
     - assets/tessdata/eng.traineddata
     - assets/tessdata/ara.traineddata
     - assets/tessdata_config.json
+    - assets/triangle.png

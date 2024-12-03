@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:basera/pages/ar_route.dart';
 import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
@@ -28,9 +29,9 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
-const routes = <Widget?>[null, DocumentsPage()];
+const routes = <Widget?>[null, DocumentsPage(), ARroutePage()];
 
-const titles = <String>["الصفحة الرئيسية", "المستندات"];
+const titles = <String>["الصفحة الرئيسية", "المستندات", "الماسح الضوئي"];
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -272,6 +273,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 if (isolate == null) continue;
                 isolate.kill(priority: Isolate.immediate);
               }
+              try {
+                        await controller.analysisController?.stop();
+                        } catch (e) {}
               await controller.analysisController?.imageSubscription?.cancel();
               controller.analysisController?.imageSubscription = null;
             }
@@ -288,6 +292,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 NavigationDestination(
                   icon: Icon(Icons.document_scanner),
                   label: 'المستندات',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.crop_square_rounded),
+                  label: 'الماسح الضوئي',
                 ),
               ],
               onDestinationSelected: (index) {
@@ -315,9 +323,13 @@ class _MyHomePageState extends State<MyHomePage> {
                       printDebug("Detecting press...");
                       if (isUsingCamera) {
                         _cleanUp();
+                        try {
+                        await controller.analysisController?.stop();
+                        } catch (e) {}
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
                         controller.analysisController?.imageSubscription = null;
+
                         isUsingCamera = false;
                       } else {
                         controller.analysisController?.start();
