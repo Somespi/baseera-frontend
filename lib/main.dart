@@ -339,23 +339,23 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: !isUsingCamera
                         ? const Icon(Icons.camera)
                         : const Icon(Icons.stop_circle_outlined)),
-                SizedBox(height: 10.0),
-                FloatingActionButton(
-                  heroTag: "serial",
-                  child: (!_isStreamingPort)
-                      ? const Icon(Icons.usb)
-                      : const Icon(Icons.usb_off),
-                  onPressed: () {
-                    if (_isStreamingPort) {
-                      _serialportFlutterPlugin.close();
-                      _isStreamingPort = false;
-                      return;
-                    }
-                    _isStreamingPort = true;
-                    isUsingCamera = false;
-                    _readDataFromSerial();
-                  },
-                ),
+                //SizedBox(height: 10.0),
+                // FloatingActionButton(
+                //   heroTag: "serial",
+                //   child: (!_isStreamingPort)
+                //       ? const Icon(Icons.usb)
+                //       : const Icon(Icons.usb_off),
+                //   onPressed: () {
+                //     if (_isStreamingPort) {
+                //       _serialportFlutterPlugin.close();
+                //       _isStreamingPort = false;
+                //       return;
+                //     }
+                //     _isStreamingPort = true;
+                //     isUsingCamera = false;
+                //     _readDataFromSerial();
+                //   },
+                // ),
               ],
             ),
             body: Padding(
@@ -413,7 +413,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontFamily: 'Changa',
-                              color: Color.fromARGB(255, 168, 168, 168),
+                              color: Color.fromARGB(255, 0, 0, 0),
                               fontSize: 14,
                             )),
                         const SizedBox(height: 10.0),
