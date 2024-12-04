@@ -274,7 +274,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 isolate.kill(priority: Isolate.immediate);
               }
               try {
-                        await controller.analysisController?.stop();
+                        //await controller.analysisController?.stop();
                         } catch (e) {}
               await controller.analysisController?.imageSubscription?.cancel();
               controller.analysisController?.imageSubscription = null;
@@ -324,7 +324,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       if (isUsingCamera) {
                         _cleanUp();
                         try {
-                        await controller.analysisController?.stop();
+                        //await controller.analysisController?.stop();
                         } catch (e) {}
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
@@ -648,6 +648,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
     HapticFeedback.mediumImpact();
     if (weight == 'HIGH') {
+      await HapticFeedback.vibrate();
       String? caption = await VQA().caption(nv21Image);
       if (caption == null) {
         printDebug("Caption is null");
@@ -782,7 +783,7 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     }
 
-    const int differenceThreshold = 800419;
+    const int differenceThreshold = 700419;
     return differenceCount < differenceThreshold;
   }
 
