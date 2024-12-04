@@ -134,6 +134,7 @@ class _MyHomePageState extends State<MyHomePage> {
   priority_manager.PriorityItem? _lastItem;
   late List<String> terms;
   int _selectedIndex = 0;
+  bool isPerformingAction = false;
 
   @override
 
@@ -249,7 +250,6 @@ class _MyHomePageState extends State<MyHomePage> {
             lastFrame = image as Nv21Image;
             return;
           }
-
           final bool isIdentical =
               _compareImages(lastFrame!, image as Nv21Image);
           if (isIdentical) {
@@ -259,7 +259,6 @@ class _MyHomePageState extends State<MyHomePage> {
           image = await (image).toJpeg();
           _currentImg = image as JpegImage?;
           _readDataFromCameraStream(image as JpegImage);
-          await Future.delayed(const Duration(milliseconds: 1000));
         },
         imageAnalysisConfig: AnalysisConfig(
           androidOptions: const AndroidAnalysisOptions.nv21(width: 480),
@@ -274,8 +273,8 @@ class _MyHomePageState extends State<MyHomePage> {
                 isolate.kill(priority: Isolate.immediate);
               }
               try {
-                        //await controller.analysisController?.stop();
-                        } catch (e) {}
+                //await controller.analysisController?.stop();
+              } catch (e) {}
               await controller.analysisController?.imageSubscription?.cancel();
               controller.analysisController?.imageSubscription = null;
             }
@@ -324,7 +323,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       if (isUsingCamera) {
                         _cleanUp();
                         try {
-                        //await controller.analysisController?.stop();
+                          //await controller.analysisController?.stop();
                         } catch (e) {}
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
@@ -577,7 +576,9 @@ class _MyHomePageState extends State<MyHomePage> {
     if (!isUsingCamera) {
       return;
     }
+    final stopwatch = Stopwatch()..start();
     final imageIm = await compute(yolo.fromJpegToImg, image);
+
     final detectedObjects = await _runObjectDetectionInBackground(imageIm);
     final maxObject = _weightOfObjects(detectedObjects, imageIm);
 
@@ -593,9 +594,17 @@ class _MyHomePageState extends State<MyHomePage> {
           maxObject.itemInitializedAt
                   .difference(_lastItem!.itemInitializedAt)
                   .inSeconds >
-              5) {
+              2.5) {
         _lastItem = maxObject;
-        await _taskEntryPoint(params);
+        printDebug("Starting new task #3. took ${stopwatch.elapsed}");
+        if (isPerformingAction) {
+          return;
+        }
+        isPerformingAction = true;
+        _taskEntryPoint(params).then((_) {
+          printDebug("Took ${stopwatch.elapsed} to complte");
+          isPerformingAction = false;
+        });
       }
     }
   }
@@ -646,7 +655,6 @@ class _MyHomePageState extends State<MyHomePage> {
     if (weight == null || nv21Image == null) {
       return;
     }
-    HapticFeedback.mediumImpact();
     if (weight == 'HIGH') {
       await HapticFeedback.vibrate();
       String? caption = await VQA().caption(nv21Image);
@@ -657,7 +665,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService.speak(caption);
       }
     } else if (weight == 'MEDIUM') {
-      HapticFeedback.vibrate();
+      HapticFeedback.mediumImpact();
     }
     //priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
     //params['port'].send('done');
@@ -805,9 +813,11 @@ class _MyHomePageState extends State<MyHomePage> {
         if (_currentImg == null) {
           await ttsService.speak("عذرا, يجب فتح الكَمِرا أولََا");
         } else {
+          final stopwatch = Stopwatch()..start();
           await ttsService.speak(await VQA().ask(
               "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
               yolo.fromJpegToImg(_currentImg!)) as String);
+          printDebug("speak executed in ${stopwatch.elapsed}");
         }
       }
       printDebug(text);

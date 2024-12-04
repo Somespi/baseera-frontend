@@ -39,7 +39,7 @@ class VQA {
   /// The function returns null if the AI model fails to generate a description.
   Future<String?> caption(dynamic image) async {
     const prompt =
-        "Describe this scene for a blind with as short description as possible, limit is 30 words IN ARABIC DO NOT SAY ANYTHING ELSE.";
+        "Describe this scene for a blind with as short description as possible, limit is 60 words IN ARABIC DO NOT SAY ANYTHING ELSE.";
     final content = [
       Content.multi([
         TextPart(prompt),
