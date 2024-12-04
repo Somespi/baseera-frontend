@@ -64,6 +64,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.8.1
   flutter_tesseract_ocr: ^0.4.26
   ar_flutter_plugin_flutterflow: ^0.7.55
+  sound_generator: ^0.0.11
 
 dev_dependencies:
   flutter_test:
@@ -120,6 +121,7 @@ flutter:
   assets:
     - assets/models/labels.txt
     - assets/models/yolo_model.onnx
+    - assets/models/yolo11n_int8.onnx
     - assets/icons/eye.png
     - assets/fonts/Changa-VariableFont_wght.ttf
     - assets/assistive_units/braille.png

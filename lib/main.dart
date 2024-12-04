@@ -19,7 +19,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
 import 'package:usb_serial/usb_serial.dart';
-
 import 'services/help_utilities.dart';
 import 'services/priority_manager.dart' as priority_manager;
 import 'services/text_to_speech.dart';
@@ -321,7 +320,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     onPressed: () async {
                       printDebug("Detecting press...");
                       if (isUsingCamera) {
-                        _cleanUp();
                         try {
                           //await controller.analysisController?.stop();
                         } catch (e) {}
@@ -572,103 +570,62 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _readDataFromCameraStream(JpegImage image) async {
-    if (!isUsingCamera) {
-      return;
-    }
-    final stopwatch = Stopwatch()..start();
-    final imageIm = await compute(yolo.fromJpegToImg, image);
+  Future<void> _readDataFromCameraStream(JpegImage image) async {
+    if (!isUsingCamera) return;
 
-    final detectedObjects = await _runObjectDetectionInBackground(imageIm);
-    final maxObject = _weightOfObjects(detectedObjects, imageIm);
+    final convertedImage = yolo.fromJpegToImg(image);
+    final detectedObjects =
+        await _runObjectDetectionInBackground(convertedImage);
+    final priorityObject = _weightOfObjects(detectedObjects, convertedImage);
+    printDebug(detectedObjects);
 
-    if (maxObject != null) {
-      final params = {
-        'weight': maxObject.measureWeight(),
-        'nv21Image': imageIm,
+    if (priorityObject != null) {
+      final parameters = {
+        'weight': priorityObject.measureWeight(),
+        'nv21Image': convertedImage,
+        'label': priorityObject.label,
+        'confidence': detectedObjects.firstWhere(
+            (obj) => obj['className'] == priorityObject.label)['confidence'],
+        'isPersonMoving': priorityObject.isPersonMoving
       };
 
-      printDebug(detectedObjects);
-
       if (_lastItem == null ||
-          maxObject.itemInitializedAt
+          priorityObject.itemInitializedAt
                   .difference(_lastItem!.itemInitializedAt)
                   .inSeconds >
               2.5) {
-        _lastItem = maxObject;
-        printDebug("Starting new task #3. took ${stopwatch.elapsed}");
-        if (isPerformingAction) {
-          return;
-        }
+        _lastItem = priorityObject;
+
+        if (isPerformingAction) return;
         isPerformingAction = true;
-        _taskEntryPoint(params).then((_) {
-          printDebug("Took ${stopwatch.elapsed} to complte");
-          isPerformingAction = false;
-        });
+        printDebug("Performing action...");
+        _taskEntryPoint(parameters).then((_) => isPerformingAction = false);
       }
     }
   }
 
-  bool isIsolateActive(Isolate isolate) {
-    try {
-      isolate.ping(RawReceivePort().sendPort);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
 
-  void _cleanUp() {
-    if (_isolates.length >= 2) {
-      final isolatesToKill = List<Isolate?>.from(_isolates);
+  static Future<void> _taskEntryPoint(Map<String, dynamic> parameters) async {
+    final weight = parameters['weight'] as String;
+    final image = parameters['nv21Image'] as img.Image;
+    final label = parameters['label'] as String;
+    final confidence = parameters['confidence'] as double;
 
-      for (final isolate in isolatesToKill) {
-        try {
-          // ignore: unnecessary_null_comparison
-          if (isolate == null) {
-            printDebug("Isolate is null.");
-            continue;
-          }
-          try {
-            isolate.ping(RawReceivePort().sendPort);
-          } catch (e) {
-            printDebug("Isolate is already dead.");
-            _isolates.remove(isolate);
-            continue;
-          }
-          isolate.kill(priority: Isolate.immediate);
-          _isolates.remove(isolate);
-          printDebug("Killed isolate. Remaining isolates: ${_isolates.length}");
-        } catch (e) {
-          printDebug("Error handling isolate: $e");
-          _isolates.remove(isolate);
-        }
-      }
-    }
-  }
+    await HapticFeedback.vibrate();
 
-  static Future<void> _taskEntryPoint(Map<String, dynamic> params) async {
-    BackgroundIsolateBinaryMessenger.ensureInitialized(
-        RootIsolateToken.instance!);
-    final weight = params['weight'];
-    final nv21Image = params['nv21Image'];
-    if (weight == null || nv21Image == null) {
-      return;
-    }
     if (weight == 'HIGH') {
-      await HapticFeedback.vibrate();
-      String? caption = await VQA().caption(nv21Image);
-      if (caption == null) {
-        printDebug("Caption is null");
-      } else {
-        printDebug("Caption: $caption");
+      final caption = await VQA().caption(image);
+      if (caption != null) {
         await ttsService.speak(caption);
+      } else {
+        await ttsService.speak(yolo.labelsToArabic[label]!);
       }
     } else if (weight == 'MEDIUM') {
-      HapticFeedback.mediumImpact();
+      await HapticFeedback.mediumImpact();
+      if (confidence > 0.7) {
+        await ttsService.speak(yolo.labelsToArabic[label]!);
+      }
     }
-    //priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
-    //params['port'].send('done');
   }
 
   /// Analyzes detected objects and determines the object with the maximum weight.
@@ -693,15 +650,10 @@ class _MyHomePageState extends State<MyHomePage> {
     priority_manager.PriorityItem?
         maxObject; // Variable to store the object with the highest weight
 
-    var previousFrameObjects = <String,
-        List<double>>{}; // Map to store previous frame objects' positions
-
     // Iterate over each detected object to determine movement and weight
     for (var objectData in detectedObjects) {
       String label =
           objectData['className']; // Get the label of the detected object
-      List<int> currentBox =
-          objectData['bbox']; // Get the bounding box of the detected object
 
       // Create a PriorityItem for the current object
       priority_manager.PriorityItem item = priority_manager.PriorityItem(
@@ -712,43 +664,15 @@ class _MyHomePageState extends State<MyHomePage> {
           direction: '',
           frame: image);
       item.initTTS();
-      // Check if the object was present in the previous frame
-      if (previousFrameObjects.containsKey(labels[objectData['classIndex']])) {
-        // Calculate movement based on the change in position
-        double previousX =
-            previousFrameObjects[labels[objectData['classIndex']]]?[0] ?? 0.0;
-        double previousY =
-            previousFrameObjects[labels[objectData['classIndex']]]?[1] ?? 0.0;
-
-        double dx = currentBox[0] - previousX;
-        double dy = currentBox[1] - previousY;
-
-        bool isMoving =
-            (dx.abs() + dy.abs()) > 5; // Determine if the object is moving
-        String direction = '';
-        if (isMoving) {
-          // Determine the direction of movement
-          if (dx.abs() > dy.abs()) {
-            direction = dx > 0 ? 'right' : 'left';
-          } else {
-            direction = dy > 0 ? 'down' : 'up';
-          }
-        }
-        item.isObjectMoving = isMoving;
-        item.direction = direction;
-      }
 
       // Measure the weight of the current object
       var itemWeight = item.measureWeight();
       // Update maxWeight and maxObject based on itemWeight
-      if (itemWeight == 'HIGH') {
-        maxWeight = 'HIGH';
+      if (itemWeight == 'HIGH' ||
+          (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') ||
+          (itemWeight == 'LOW' && maxWeight == 'LOW')) {
+        maxWeight = itemWeight;
         maxObject = item;
-      } else if (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') {
-        maxWeight = 'MEDIUM';
-        maxObject = item;
-      } else if (itemWeight == 'LOW' && maxWeight == 'LOW') {
-        maxObject ??= item;
       }
     }
 
@@ -777,53 +701,48 @@ class _MyHomePageState extends State<MyHomePage> {
     // Compare pixel data
     final lastPixels = lastFrame.bytes;
     final currentPixels = currentFrame.bytes;
-
     if (lastPixels.length != currentPixels.length) {
       return false; // Different data size means images are not the same
     }
 
-    // Calculate the difference
     int differenceCount = 0;
-    const int tolerance = 10; // Allow some pixel differences
-    for (int i = 0; i < lastPixels.length; i++) {
-      if ((lastPixels[i] - currentPixels[i]).abs() > tolerance) {
+    for (int i = 0; i < lastPixels.length; i += 4) {
+      final int rDiff = (lastPixels[i] - currentPixels[i]).abs();
+      final int gDiff = (lastPixels[i + 1] - currentPixels[i + 1]).abs();
+      final int bDiff = (lastPixels[i + 2] - currentPixels[i + 2]).abs();
+      if (rDiff > 10 || gDiff > 10 || bDiff > 10) {
         differenceCount++;
       }
     }
-
-    const int differenceThreshold = 700419;
-    return differenceCount < differenceThreshold;
+    return ((differenceCount - 0) / 320000) < 0.67;
   }
 
   Future<void> _askQuestion() async {
+    final stopwatch = Stopwatch()..start();
+
     await speechToTextService.stopListening();
     await speechToTextService.startListening((text) async {
       if (Ocr.isRequestingOCR(text, terms)) {
         if (_currentImg == null) {
-          await ttsService.speak("عذرا, يجب فتح الكَمِرا أولََا");
+          await ttsService.speak("يجب فتح الكَمِرا أولََا");
         } else {
-          await ttsService.speak("يتم التحقق من الصورة");
           final extracted =
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
-
-          await ttsService.speak(extracted!);
-          printDebug(extracted);
+          await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
         }
       } else {
         if (_currentImg == null) {
-          await ttsService.speak("عذرا, يجب فتح الكَمِرا أولََا");
+          await ttsService.speak("يجب فتح الكَمِرا أولََا");
         } else {
-          final stopwatch = Stopwatch()..start();
-          await ttsService.speak(await VQA().ask(
+          final answer = await VQA().ask(
               "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
-              yolo.fromJpegToImg(_currentImg!)) as String);
-          printDebug("speak executed in ${stopwatch.elapsed}");
+              yolo.fromJpegToImg(_currentImg!));
+          await ttsService.speak(answer as String);
         }
       }
-      printDebug(text);
     });
-    // await Future.delayed(Duration(seconds: 5, milliseconds: 2), () async {
-    // });
+
+    printDebug("speak executed in ${stopwatch.elapsed}");
   }
 
   _connectToAU(Map<String, Object> au) async {

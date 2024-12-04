@@ -6,6 +6,90 @@ import 'package:flutter/services.dart';
 import 'package:onnxruntime/onnxruntime.dart';
 import 'package:image/image.dart' as imglib;
 import 'help_utilities.dart';
+
+Map<String, String> labelsToArabic = {
+  'person': 'شخص',
+  'bicycle': 'دراجة',
+  'car': 'سيارة',
+  'motorbike': 'دراجة نارية',
+  'aeroplane': 'طائرة',
+  'bus': 'حافلة',
+  'train': 'قطار',
+  'truck': 'شاحنة',
+  'boat': 'قارب',
+  'traffic_light': 'إشارة مرور',
+  'fire_hydrant': 'صنبور حريق',
+  'stop_sign': 'إشارة توقف',
+  'parking_meter': 'عداد موقف',
+  'bench': 'مقعد',
+  'bird': 'طائر',
+  'cat': 'قطة',
+  'dog': 'كلب',
+  'horse': 'حصان',
+  'sheep': 'خروف',
+  'cow': 'بقرة',
+  'elephant': 'فيل',
+  'bear': 'دب',
+  'zebra': 'حمار وحشي',
+  'giraffe': 'زرافة',
+  'backpack': 'حقيبة ظهر',
+  'umbrella': 'مظلة',
+  'handbag': 'حقيبة يد',
+  'tie': 'رباط عنق',
+  'suitcase': 'حقيبة سفر',
+  'frisbee': 'طائرة ورقية',
+  'skis': 'زلاجات',
+  'snowboard': 'لوح تزلج على الثلج',
+  'sports_ball': 'كرة رياضية',
+  'kite': 'طائرة ورقية',
+  'baseball_bat': 'مضرب بيسبول',
+  'baseball_glove': 'قفاز بيسبول',
+  'skateboard': 'لوح تزلج',
+  'surfboard': 'لوح ركوب الأمواج',
+  'tennis_racket': 'مضرب تنس',
+  'bottle': 'زجاجة',
+  'wine_glass': 'كأس نبيذ',
+  'cup': 'كوب',
+  'fork': 'شوكة',
+  'knife': 'سكين',
+  'spoon': 'ملعقة',
+  'bowl': 'وعاء',
+  'banana': 'موز',
+  'apple': 'تفاحة',
+  'sandwich': 'ساندويتش',
+  'orange': 'برتقال',
+  'broccoli': 'بروكلي',
+  'carrot': 'جزر',
+  'hot_dog': 'هوت دوغ',
+  'pizza': 'بيتزا',
+  'donut': 'دونات',
+  'cake': 'كعكة',
+  'chair': 'كرسي',
+  'sofa': 'أريكة',
+  'pottedplant': 'نبات في وعاء',
+  'bed': 'سرير',
+  'diningtable': 'طاولة طعام',
+  'toilet': 'مرحاض',
+  'tvmonitor': 'شاشة تلفزيون',
+  'laptop': 'حاسوب محمول',
+  'mouse': 'فأرة',
+  'remote': 'جهاز تحكم عن بعد',
+  'keyboard': 'لوحة مفاتيح',
+  'cell_phone': 'هاتف محمول',
+  'microwave': 'ميكروويف',
+  'oven': 'فرن',
+  'toaster': 'محمص الخبز',
+  'sink': 'مغسلة',
+  'refrigerator': 'ثلاجة',
+  'book': 'كتاب',
+  'clock': 'ساعة',
+  'vase': 'مزهرية',
+  'scissors': 'مقص',
+  'teddy_bear': 'دب محشو',
+  'hair_drier': 'مجفف شعر',
+  'toothbrush': 'فرشاة أسنان',
+};
+
 // ignore: implementation_imports
 
 /// Loads the COCO labels from the assets/models/labels.txt file.
@@ -40,7 +124,7 @@ Future<OrtSession> loadModel() async {
     sessionOptions.appendCPUProvider(CPUFlags.useArena);
   }
 
-  const assetFileName = 'assets/models/yolo_model.onnx';
+  const assetFileName = 'assets/models/yolo11n_int8.onnx'; //'assets/models/yolo_model.onnx';
   final rawAssetFile = await rootBundle.load(assetFileName);
   final bytes = rawAssetFile.buffer.asUint8List();
   return OrtSession.fromBuffer(bytes, sessionOptions);
@@ -70,26 +154,21 @@ Future<OrtSession> loadModel() async {
 Future<List<Map<String, dynamic>>> runObjectDetection(
     Map<String, dynamic> message) async {
   try {
-    if (message['image'] == null || message['interpreter'] == null) {
-      return [];
-    }
-    final result = await _detectObjects(
-        await compute(_processImageForDetection, [
-          message['image'],
-          [1, 3, 640, 640],
-          [1, 84, 8400]
-        ]),
-        message['interpreter']);
+    if (message['image'] == null || message['interpreter'] == null) return [];
 
-    if (result == null) {
-      return [];
-    }
+    final image = await compute(_processImageForDetection, [
+      message['image'],
+      [1, 3, 640, 640],
+      [1, 84, 8400]
+    ]);
+
+    final result = await _detectObjects([image, []], message['interpreter']!);
 
     final detections = postprocessor(
-      result,
+      result!,
       [message['width'], message['height']],
-      0.45,
-      0.45,
+      0.3,
+      0.3,
       640,
       640,
       message['labels'],
@@ -102,6 +181,7 @@ Future<List<Map<String, dynamic>>> runObjectDetection(
 
     return detections;
   } catch (e) {
+    printDebug(e.toString());
     return [];
   }
 }
