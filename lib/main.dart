@@ -1,12 +1,13 @@
-// ignore_for_file: empty_catches
+// ignore_for_file: empty_catches, use_build_context_synchronously
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:basera/pages/ar_route.dart';
+import 'package:basera/pages/maps_route.dart';
 import 'package:basera/pages/ocr_route.dart';
+import 'package:basera/services/maps.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/vqa.dart';
@@ -21,6 +22,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
 import 'package:usb_serial/usb_serial.dart';
+import 'package:geolocator/geolocator.dart';
 import 'services/help_utilities.dart';
 import 'services/priority_manager.dart' as priority_manager;
 import 'services/text_to_speech.dart';
@@ -30,9 +32,10 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
-const routes = <Widget?>[null, DocumentsPage(), ARroutePage()];
-
-const titles = <String>["الصفحة الرئيسية", "المستندات", "الماسح الضوئي"];
+Position? destination;
+bool isDirectionServiceRunning = false;
+const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
+const titles = <String>["الصفحة الرئيسية", "المستندات", "المواقع", "الماسح الضوئي"];
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -74,25 +77,6 @@ void main() async {
   await speechToTextService.initialize();
 
   runApp(const MyApp());
-}
-
-/// Performs a static action in the background using the provided parameters.
-///
-/// This function takes a map of parameters, extracts the 'weight' and 'nv21Image',
-/// and uses them to perform a static action through the `PriorityItem` class in
-/// the `priority_manager` package. The action is executed asynchronously in the
-/// background, and the result is returned as a `Future<String?>`.
-///
-/// - Parameters:
-///   - params: A map containing the parameters 'weight' and 'nv21Image' required
-///             to perform the action.
-///
-/// - Returns: A `Future<String?>` containing the result of the action.
-Future<void> _performActionInBackground(Map<String, dynamic> params) async {
-  final weight = params['weight'];
-  final nv21Image = params['nv21Image'];
-
-  await priority_manager.PriorityItem.performStaticAction(weight, nv21Image);
 }
 
 class MyApp extends StatelessWidget {
@@ -143,7 +127,8 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
   priority_manager.PriorityItem? _lastItem;
-  late List<String> terms;
+  late List<String> oCRterms;
+  late List<String> mapsTerms;
   int _selectedIndex = 0;
   bool isPerformingAction = false;
 
@@ -159,6 +144,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _initializeModel();
     _initializeGyroscope();
     getPermissions();
+    _handleLocationPermission();
   }
 
   /// Initializes the object detection model.
@@ -175,11 +161,41 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     _interpreter = await yolo.loadModel();
-    terms = await Ocr.loadTerms();
+    oCRterms = await Ocr.loadTerms();
+    mapsTerms = await Maps.loadTerms();
 
     setState(() {
       _isLoading = false;
     });
+  }
+
+  Future<bool> _handleLocationPermission() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Location services are disabled. Please enable the services')));
+      return false;
+    }
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permissions are denied')));
+        return false;
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Location permissions are permanently denied, we cannot request permissions.')));
+      return false;
+    }
+    return true;
   }
 
   /// Initializes the gyroscope listener to monitor device movement.
@@ -257,6 +273,7 @@ class _MyHomePageState extends State<MyHomePage> {
           if (!isUsingCamera) {
             return;
           }
+          handleDirecting();
           if (lastFrame == null) {
             lastFrame = image as Nv21Image;
             return;
@@ -298,6 +315,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 NavigationDestination(
                   icon: Icon(Icons.document_scanner),
                   label: 'المستندات',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.location_pin),
+                  label: 'المواقع',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.crop_square_rounded),
@@ -660,7 +681,17 @@ class _MyHomePageState extends State<MyHomePage> {
     await speechToTextService.startListening((text) async {
       await writeToBraille('لحظة');
       await ttsService.speak('لحظةً');
-      if (Ocr.isRequestingOCR(text, terms)) {
+      if (Maps.isRequestingDirections(text, mapsTerms)) {
+        await writeToBraille("إلى أين تريد الذهاب؟");
+        await ttsService.speak("إلى أين تريد الذهاب؟");
+        await speechToTextService.startListening((location) async {
+          final loc = await Maps.getPositionOf(location);
+          destination = loc['position'];
+          await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
+          await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
+          isDirectionServiceRunning = true;
+        });
+      } else if (Ocr.isRequestingOCR(text, oCRterms)) {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
           await ttsService.speak("يجب فتح الكاميرا");
@@ -760,6 +791,29 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     } else {
       printDebug("No device connected.");
+    }
+  }
+
+  Future<void> handleDirecting() async {
+    var origin = await Maps.getCurrentPosition();
+    if (origin == null || destination == null || !isDirectionServiceRunning) {
+      return;
+    }
+    final directionsSegments = await Maps.fetchSegmentsfromAPI(
+        [origin.latitude, origin.longitude],
+        [destination!.latitude, destination!.longitude]);
+    final steps = directionsSegments[0]['steps'];
+    final polyline = directionsSegments[1];
+    int? stepIndex = Maps.findCurrentStep(
+            polyline, steps, origin.latitude, origin.longitude) ??
+        0;
+    final stepInstruction = steps[stepIndex]['type'];
+    String instruction = Maps.instructionType[stepInstruction];
+
+    await writeToBraille(instruction);
+    await ttsService.speak(instruction);
+    if (stepIndex == steps.length - 1) {
+      isDirectionServiceRunning = false;
     }
   }
 }

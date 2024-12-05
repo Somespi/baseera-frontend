@@ -6,6 +6,7 @@ import 'package:ar_flutter_plugin_flutterflow/managers/ar_anchor_manager.dart';
 import 'package:ar_flutter_plugin_flutterflow/managers/ar_location_manager.dart';
 import 'package:ar_flutter_plugin_flutterflow/managers/ar_object_manager.dart';
 import 'package:ar_flutter_plugin_flutterflow/managers/ar_session_manager.dart';
+import 'package:basera/services/help_utilities.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -238,7 +239,7 @@ void onARViewCreated(
   );
   arObjectManager.onInitialize();
   // ARLocationManager arLocationManager = ARLocationManager();
-  // arLocationManager.currentLocation;
+  printDebug(arLocationManager.getLastKnownPosition());
 }
 
 Future<Map<String, dynamic>> getConfigFile() async {
