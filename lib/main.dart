@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -34,11 +35,14 @@ const titles = <String>["الصفحة الرئيسية", "المستندات", "
 var assistiveUnits = [
   {
     "name": "خلية برايل",
-    "isUsing": false,
+    "deviceName": "ESP32_Braille_Device",
+    "connectedDevice": null,
+    "connectedCharacteristic": null,
+    "connectedService": null,
+    "isConnected": false,
     "image": "assets/icons/braille.png",
     "description":
         "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
-    "bleAddress": "3C:84:27:C3:33:99",
   }
 ];
 
@@ -443,10 +447,18 @@ class _MyHomePageState extends State<MyHomePage> {
                                       ),
                                       //const SizedBox(height: 5.0),
                                       ElevatedButton(
-                                        onPressed: () => _connectToAU(au),
+                                        onPressed: () async {
+                                          if (au['isConnected'] as bool) {
+                                            _disconnectFromAU(au);
+                                          } else {
+                                            _connectToAU(au);
+                                          }
+                                        },
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color.fromARGB(
-                                              255, 90, 181, 255),
+                                          backgroundColor:
+                                              !(au['isConnected'] as bool)
+                                                  ? Colors.blue[500]
+                                                  : Colors.red[500],
                                           shape: RoundedRectangleBorder(
                                             borderRadius:
                                                 BorderRadius.circular(8.0),
@@ -454,7 +466,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                           fixedSize: const Size(100, 30),
                                         ),
                                         child: Text(
-                                          "اتصل",
+                                          !(au['isConnected'] as bool)
+                                              ? "اقتران"
+                                              : "انفصال",
                                           style: GoogleFonts.rubik(
                                               textStyle: TextStyle(
                                                   fontSize: 16,
@@ -473,101 +487,6 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           );
         });
-  }
-
-  /// Reads data from the serial port, runs object detection on the received
-  /// images and performs the appropriate action based on the object detection
-  /// results.
-  ///
-  /// This function opens the serial port, sets the port parameters, and listens
-  /// to the input stream. When a delimiter is found in the input stream, the
-  /// function decodes the image data and runs object detection on the image.
-  /// The results of the object detection are used to determine the weight of
-  /// the detected objects. The function then performs the appropriate action
-  /// based on the weight of the detected objects.
-  ///
-  /// The function also listens to the gyroscope data stream and sets the
-  /// [isPersonMoving] flag to true if the magnitude of the gyroscope data
-  /// exceeds a certain threshold. This flag is used to determine the weight
-  /// of the detected objects.
-  void _readDataFromSerial() async {
-    List<UsbDevice> devices = await UsbSerial.listDevices();
-    printDebug("Found ${devices.length} devices");
-    if (devices.isEmpty) {
-      return;
-    }
-
-    UsbPort? port = await devices[0].create();
-    if (port == null) {
-      printDebug("Failed to create port");
-      return;
-    }
-    _port = port;
-
-    bool openResult = await port.open();
-    if (!openResult) {
-      printDebug("Failed to open port");
-      return;
-    }
-
-    await port.setDTR(true);
-    await port.setRTS(true);
-
-    port.setPortParameters(
-      115200,
-      UsbPort.DATABITS_8,
-      UsbPort.STOPBITS_1,
-      UsbPort.PARITY_NONE,
-    );
-    isUsingCamera = false;
-    _isStreamingPort = true;
-
-    port.inputStream?.listen((Uint8List event) async {
-      try {
-        if (isUsingCamera || !_isStreamingPort) {
-          await port.close();
-          return;
-        }
-        _currentImgBuffer = Uint8List.fromList(_currentImgBuffer + event);
-        const delimiter = '\nDone...';
-        final delimiterIndex =
-            String.fromCharCodes(_currentImgBuffer).indexOf(delimiter);
-
-        if (delimiterIndex != -1) {
-          final imageData = _currentImgBuffer.sublist(0, delimiterIndex);
-
-          _currentImgBuffer =
-              _currentImgBuffer.sublist(delimiterIndex + delimiter.length);
-
-          var image = img.decodeJpg(imageData);
-          if (image != null) {
-            //image = img.Image.fromBytes(bytes: image.buffer, height: image.height, width: image.width);
-
-            final detectedObjects =
-                // ignore: use_build_context_synchronously
-                await _runObjectDetectionInBackground(image);
-
-            final maxObject = _weightOfObjects(detectedObjects, image);
-            if (maxObject != null) {
-              final params = {
-                'weight': maxObject.measureWeight(),
-                'nv21Image': image,
-              };
-              await compute(_performActionInBackground, params);
-            }
-          } else {
-            printDebug('Failed to decode JPEG image');
-            printDebug('Image data length: ${imageData.length}');
-          }
-        }
-      } catch (e) {
-        printDebug('Error: $e');
-      }
-    }, onError: (error) {
-      printDebug('Stream read error: $error');
-    }, onDone: () {
-      printDebug('Image stream closed');
-    });
   }
 
   Future<void> _readDataFromCameraStream(JpegImage image) async {
@@ -604,7 +523,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-
   static Future<void> _taskEntryPoint(Map<String, dynamic> parameters) async {
     final weight = parameters['weight'] as String;
     final image = parameters['nv21Image'] as img.Image;
@@ -616,14 +534,29 @@ class _MyHomePageState extends State<MyHomePage> {
     if (weight == 'HIGH') {
       final caption = await VQA().caption(image);
       if (caption != null) {
+        await writeToBraille(caption);
         await ttsService.speak(caption);
       } else {
+        await writeToBraille(yolo.labelsToArabic[label]!);
         await ttsService.speak(yolo.labelsToArabic[label]!);
       }
     } else if (weight == 'MEDIUM') {
       await HapticFeedback.mediumImpact();
       if (confidence > 0.7) {
+        await writeToBraille(yolo.labelsToArabic[label]!);
         await ttsService.speak(yolo.labelsToArabic[label]!);
+      }
+    }
+  }
+
+  static Future<void> writeToBraille(String caption) async {
+    if ((assistiveUnits[0]['isConnected'] as bool)) {
+      BluetoothCharacteristic? characteristic = assistiveUnits[0]
+          ['connectedCharacteristic'] as BluetoothCharacteristic?;
+      if (characteristic != null) {
+        await characteristic.write(utf8.encode(caption));
+      } else {
+        printDebug("Characteristic is null.");
       }
     }
   }
@@ -724,20 +657,24 @@ class _MyHomePageState extends State<MyHomePage> {
     await speechToTextService.startListening((text) async {
       if (Ocr.isRequestingOCR(text, terms)) {
         if (_currentImg == null) {
-          await ttsService.speak("يجب فتح الكَمِرا أولََا");
+          await writeToBraille("يجب فتح الكَمِرا");
+          await ttsService.speak("يجب فتح الكَمِرا");
         } else {
           final extracted =
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
+          await writeToBraille(extracted ?? "لم أستطع تحديد النص");
           await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
         }
       } else {
         if (_currentImg == null) {
-          await ttsService.speak("يجب فتح الكَمِرا أولََا");
+          await writeToBraille("يجب فتح الكَمِرا");
+          await ttsService.speak("يجب فتح الكَمِرا");
         } else {
           final answer = await VQA().ask(
               "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
               yolo.fromJpegToImg(_currentImg!));
-          await ttsService.speak(answer as String);
+          await writeToBraille(answer as String);
+          await ttsService.speak(answer);
         }
       }
     });
@@ -745,25 +682,81 @@ class _MyHomePageState extends State<MyHomePage> {
     printDebug("speak executed in ${stopwatch.elapsed}");
   }
 
-  _connectToAU(Map<String, Object> au) async {
-    var subscription = FlutterBluePlus.onScanResults.listen(
-      (results) {
-        ScanResult r = results.last;
+  void _connectToAU(Map<String, Object?> au) async {
+    var targetDeviceName = au["deviceName"] as String;
+    const targetServiceUuid = "00001800-0000-1000-8000-00805f9b34fb";
+    const targetCharacteristicUuid = "00002a00-0000-1000-8000-00805f9b34fb";
+
+    try {
+      printDebug("Scanning for devices...");
+      FlutterBluePlus.startScan(timeout: Duration(seconds: 5));
+
+      var subscription = FlutterBluePlus.scanResults.listen((results) async {
+        for (ScanResult result in results) {
+          printDebug(
+              'Found device: ${result.device.advName}, ID: ${result.device.remoteId}');
+          if (result.device.advName == targetDeviceName) {
+            await FlutterBluePlus.stopScan();
+            printDebug("Connecting to ${result.device.advName}...");
+
+            au["connectedDevice"] = result.device;
+            await (au["connectedDevice"] as BluetoothDevice?)!.connect();
+            printDebug("Connected!");
+
+            var services = await (au["connectedDevice"] as BluetoothDevice?)!
+                .discoverServices();
+            for (var service in services) {
+              printDebug('Service: ${service.uuid}');
+              if (service.uuid.toString() == targetServiceUuid) {
+                au["connectedService"] = service;
+
+                for (var characteristic in service.characteristics) {
+                  printDebug('Characteristic: ${characteristic.uuid}');
+                  if (characteristic.uuid.toString() ==
+                      targetCharacteristicUuid) {
+                    au["connectedCharacteristic"] = characteristic;
+                    setState(() {
+                      au["isConnected"] = true;
+                    });
+                    printDebug("Target characteristic saved!");
+                    break;
+                  }
+                }
+                break;
+              }
+            }
+          }
+        }
+      });
+
+      await Future.delayed(Duration(seconds: 5));
+      subscription.cancel();
+    } catch (e) {
+      printDebug("Error: $e");
+    }
+  }
+
+  void _disconnectFromAU(Map<String, Object?> au) async {
+    if ((au["connectedDevice"] as BluetoothDevice?) != null) {
+      try {
         printDebug(
-            '${r.device.remoteId}: "${r.advertisementData.advName}" found!');
-      },
-      onError: (e) => printDebug(e),
-    );
+            "Disconnecting from ${(au["connectedDevice"] as BluetoothDevice?)!.advName}...");
+        await (au["connectedDevice"] as BluetoothDevice?)!.disconnect();
+        printDebug("Disconnected successfully!");
 
-    FlutterBluePlus.cancelWhenScanComplete(subscription);
-    await FlutterBluePlus.adapterState
-        .where((val) => val == BluetoothAdapterState.on)
-        .first;
+        au["connectedDevice"] = null;
+        au["connectedService"] = null;
+        au["connectedCharacteristic"] = null;
 
-    await FlutterBluePlus.startScan(
-        withServices: [Guid("180D")], timeout: Duration(seconds: 5));
-
-    var device =
-        await FlutterBluePlus.isScanning.where((val) => val == false).first;
+        printDebug("Resources cleared.");
+        setState(() {
+          au["isConnected"] = false;
+        });
+      } catch (e) {
+        printDebug("Error during disconnection: $e");
+      }
+    } else {
+      printDebug("No device connected.");
+    }
   }
 }
