@@ -651,14 +651,15 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _askQuestion() async {
-    final stopwatch = Stopwatch()..start();
-
     await speechToTextService.stopListening();
+
     await speechToTextService.startListening((text) async {
+      await writeToBraille('لحظة');
+      await ttsService.speak('لحظةً');
       if (Ocr.isRequestingOCR(text, terms)) {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
-          await ttsService.speak("يجب فتح الكَمِرا");
+          await ttsService.speak("يجب فتح الكاميرا");
         } else {
           final extracted =
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
@@ -668,7 +669,7 @@ class _MyHomePageState extends State<MyHomePage> {
       } else {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
-          await ttsService.speak("يجب فتح الكَمِرا");
+          await ttsService.speak("يجب فتح الكاميرا");
         } else {
           final answer = await VQA().ask(
               "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
@@ -678,8 +679,6 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
     });
-
-    printDebug("speak executed in ${stopwatch.elapsed}");
   }
 
   void _connectToAU(Map<String, Object?> au) async {
