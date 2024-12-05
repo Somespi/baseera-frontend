@@ -9,7 +9,6 @@ import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/vqa.dart';
 import 'package:camerawesome/camerawesome_plugin.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -43,7 +42,18 @@ var assistiveUnits = [
     "image": "assets/icons/braille.png",
     "description":
         "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
-  }
+  },
+  {
+    "name": "هزازات الحركة",
+    "deviceName": "NanoESP32_BuzzerControl",
+    "connectedDevice": null,
+    "connectedCharacteristic": null,
+    "connectedService": null,
+    "isConnected": false,
+    "image": "assets/icons/motion.png",
+    "description":
+        "جهاز هزازات الحركة يترجم النصوص المكتوبة في الحركة بشكل مستقل.",
+  },
 ];
 
 void main() async {

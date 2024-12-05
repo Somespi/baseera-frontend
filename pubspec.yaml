@@ -126,6 +126,7 @@ flutter:
     - assets/fonts/Changa-VariableFont_wght.ttf
     - assets/assistive_units/braille.png
     - assets/icons/braille.png
+    - assets/icons/motion.png
     - assets/icons/
     - assets/models/
     - assets/
