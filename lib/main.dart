@@ -135,12 +135,8 @@ class _MyHomePageState extends State<MyHomePage> {
   // ignore: unused_field
   UsbPort? _port;
   JpegImage? _currentImg;
-  Uint8List _currentImgBuffer = Uint8List(0);
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
-  bool _isStreamingPort = false;
-  // ignore: prefer_final_fields
-  List<Isolate?> _isolates = List.filled(1, null, growable: false);
   Nv21Image? lastFrame;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
@@ -281,12 +277,8 @@ class _MyHomePageState extends State<MyHomePage> {
         builder: (controller, preview) {
           () async {
             if (!isUsingCamera) {
-              for (var isolate in _isolates) {
-                if (isolate == null) continue;
-                isolate.kill(priority: Isolate.immediate);
-              }
               try {
-                //await controller.analysisController?.stop();
+                await controller.analysisController?.stop();
               } catch (e) {}
               await controller.analysisController?.imageSubscription?.cancel();
               controller.analysisController?.imageSubscription = null;
@@ -335,7 +327,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       printDebug("Detecting press...");
                       if (isUsingCamera) {
                         try {
-                          //await controller.analysisController?.stop();
+                          await controller.analysisController?.stop();
                         } catch (e) {}
                         await controller.analysisController?.imageSubscription
                             ?.cancel();
