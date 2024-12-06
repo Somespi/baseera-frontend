@@ -15,6 +15,7 @@ import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
@@ -356,13 +357,14 @@ class _MyHomePageState extends State<MyHomePage> {
             floatingActionButton: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                isListeningToPlace ?
+                isDirectionServiceRunning || isListeningToPlace ?
                 FloatingActionButton(
                   heroTag: "أيقاف الموقع",
                   child: Icon(Icons.location_pin),
                   onPressed: () {
                     setState(() async {
                       isListeningToPlace = false;
+                      isDirectionServiceRunning = false;
                       lastDirectedStep = -1;
                       directionsSegments = null;
                       await ttsService.speak("تم إيقاف التنقل");
@@ -665,7 +667,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (item.ttsServiceNotInitialized()) {
         item.initTTS();
       }
-      var previousObject = null;
+      Map<String, dynamic>? previousObject;
       if (previousObjects.isNotEmpty) {
         previousObject = previousObjects
             .firstWhere((element) => element?['className'] == label);
@@ -748,8 +750,9 @@ class _MyHomePageState extends State<MyHomePage> {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(text);
         if (loc == null) {
-          await writeToBraille("لم يتم العثور على موقعك");
-          await ttsService.speak("لم يتم العثور على موقعك");
+          await writeToBraille("لم يتم العثور على موقع محغوظ, يتم البحث في الجوار");
+          await ttsService.speak("لم يتم العثور على موقع محغوظ, يتم البحث في الجوار");
+
           return;
         }
         destination = Position.fromMap(loc['position']);
@@ -799,8 +802,18 @@ class _MyHomePageState extends State<MyHomePage> {
           await writeToBraille("يجب فتح الكَمِرا");
           await ttsService.speak("يجب فتح الكاميرا");
         } else {
+          Position? origin;
+          await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.best)
+              .then((Position position) {
+            origin = position;
+          });
+
+          final location = await placemarkFromCoordinates(origin?.latitude ?? 0 , origin?.longitude ?? 0);
           final answer = await VQA().ask(
-              "Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that",
+              """Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that 
+              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
+              ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
               yolo.fromJpegToImg(_currentImg!));
           await writeToBraille(answer as String);
           await ttsService.speak(answer);
