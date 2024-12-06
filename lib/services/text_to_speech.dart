@@ -4,6 +4,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 class TextToSpeechService {
   static final FlutterTts _flutterTts = FlutterTts();
 
+  static bool isInitial = false;
+
   /// Initializes the Text to Speech service.
   ///
   /// This function sets the language to Arabic (ar-SA), the pitch to 1.0 and the
@@ -12,6 +14,7 @@ class TextToSpeechService {
     await _flutterTts.setLanguage("ar-SA");
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setVolume(1.0);
+    isInitial = true;
   }
 
   Future<void> speak(String text) async {
@@ -36,5 +39,9 @@ class TextToSpeechService {
 
   Future<void> setRate(double rate) async {
     await _flutterTts.setSpeechRate(rate);
+  }
+
+  bool isInitialized() {
+    return isInitial;
   }
 }

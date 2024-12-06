@@ -141,6 +141,8 @@ class _MyHomePageState extends State<MyHomePage> {
   int _selectedIndex = 0;
   bool isPerformingAction = false;
 
+  List<Map<String, dynamic>?> previousObjects = [];
+
   @override
 
   /// Initializes the object detection model and starts listening to the
@@ -539,7 +541,9 @@ class _MyHomePageState extends State<MyHomePage> {
         'label': priorityObject.label,
         'confidence': detectedObjects.firstWhere(
             (obj) => obj['className'] == priorityObject.label)['confidence'],
-        'isPersonMoving': priorityObject.isPersonMoving
+        'isPersonMoving': priorityObject.isPersonMoving,
+        'isObjectMoving': priorityObject.isObjectMoving,
+        'direction': priorityObject.direction
       };
 
       if (_lastItem == null ||
@@ -557,14 +561,16 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  static Future<void> _taskEntryPoint(Map<String, dynamic> parameters) async {
-    final weight = parameters['weight'] as String;
-    final image = parameters['nv21Image'] as img.Image;
-    final label = parameters['label'] as String;
-    final confidence = parameters['confidence'] as double;
+  static Future<void> _taskEntryPoint(Map<String, dynamic> objectData) async {
+    final weight = objectData['weight'] as String;
+    final image = objectData['nv21Image'] as img.Image;
+    final label = objectData['label'] as String;
+    final confidence = objectData['confidence'] as double;
 
     await HapticFeedback.vibrate();
-
+    if (objectData['isObjectMoving'] as bool) {
+      await vibrate(objectData['direction'] as String);
+    }
     if (weight == 'HIGH') {
       final caption = await VQA().caption(image);
       if (caption != null) {
@@ -589,6 +595,30 @@ class _MyHomePageState extends State<MyHomePage> {
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
         await characteristic.write(utf8.encode(caption));
+      } else {
+        printDebug("Characteristic is null.");
+      }
+    }
+  }
+
+  static Future<void> vibrate(String direction) async {
+    if ((assistiveUnits[1]['isConnected'] as bool)) {
+      BluetoothCharacteristic? characteristic = assistiveUnits[1]
+          ['connectedCharacteristic'] as BluetoothCharacteristic?;
+      if (characteristic != null) {
+        String vibratorCommand = '';
+        if (direction == 'front') {
+          vibratorCommand = 'ON1';
+        } else if (direction == 'back') {
+          vibratorCommand = 'ON3';
+        } else if (direction == 'left') {
+          vibratorCommand = 'ON4';
+        } else if (direction == 'right') {
+          vibratorCommand = 'ON2';
+        }
+        if (vibratorCommand.isNotEmpty) {
+          await characteristic.write(utf8.encode(vibratorCommand));
+        }
       } else {
         printDebug("Characteristic is null.");
       }
@@ -630,7 +660,22 @@ class _MyHomePageState extends State<MyHomePage> {
           weight: 1.0,
           direction: '',
           frame: image);
+      if (item.ttsServiceNotInitialized()) {
+        
       item.initTTS();
+      }
+      var previousObject = previousObjects.firstWhere((element) => element?['className'] == label);
+
+      // is object moving - check if the object is moving based on its bounding box
+      if (objectData['boundingBox'] != null && previousObjects.isNotEmpty) {
+        item.isObjectMoving = _isObjectMoving(objectData['boundingBox'], previousObject);
+      }
+
+      if (item.isObjectMoving) {
+        item.direction = _getDirection(objectData['boundingBox'], previousObject);
+      }
+
+
 
       // Measure the weight of the current object
       var itemWeight = item.measureWeight();
@@ -642,6 +687,8 @@ class _MyHomePageState extends State<MyHomePage> {
         maxObject = item;
       }
     }
+
+    previousObjects = detectedObjects;
 
     return maxObject; // Return the object with the highest weight
   }
@@ -834,5 +881,28 @@ class _MyHomePageState extends State<MyHomePage> {
       isDirectionServiceRunning = false;
       lastDirectedStep = -1;
     }
+  }
+  
+  bool _isObjectMoving(Map<String, dynamic>? objectData, Map<String, dynamic>? previousObjectData) {
+    if (objectData == null || previousObjectData == null) return false;
+    const threshold = 10;
+
+    final dx = (objectData['x'] - previousObjectData['x']).abs();
+    final dy = (objectData['y'] - previousObjectData['y']).abs();
+    return dx > threshold || dy > threshold;
+  }
+  
+  String _getDirection(objectData, Map<String, dynamic>? previousObjectData) {
+    if (objectData == null || previousObjectData == null) return '';
+    final dx = objectData['x'] - previousObjectData['x'];
+    final dy = objectData['y'] - previousObjectData['y'];
+    int threshold = 10;
+    // Check if the object has moved in any direction (left, right, front, back)
+    if (dx.abs() > threshold) {
+      return dx > 0 ? 'right' : 'left';
+    } else if (dy.abs() > threshold) {
+      return dy > 0 ? 'front' : 'back';
+    }
+    return '';
   }
 }

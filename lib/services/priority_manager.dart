@@ -103,6 +103,13 @@ class PriorityItem {
       // Perform low priority action
     }
   }
+
+  bool ttsServiceNotInitialized() {
+    if (!ttsService.isInitialized()) {
+      return true;
+    }
+    return false;
+  }
 }
 
 class TaskQueue {
