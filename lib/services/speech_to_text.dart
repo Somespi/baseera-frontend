@@ -27,6 +27,17 @@ class SpeechToTextService {
     );
   }
 
+  Future<String> listenToThenReturnResult() async {
+    await _speech.listen(
+      onResult: (result) {
+        _text = result.recognizedWords;
+      },
+      listenFor: Duration(seconds: 4, milliseconds: 500),
+      localeId: 'ar-SA',
+    );
+    return _text;
+  }
+
   Future<void> stopListening() async {
     await _speech.stop();
   }

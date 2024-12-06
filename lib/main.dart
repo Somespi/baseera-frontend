@@ -32,10 +32,19 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
+
 Position? destination;
 bool isDirectionServiceRunning = false;
+bool isListeningToPlace = false;
+int lastDirectedStep = -1;
+
 const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
-const titles = <String>["الصفحة الرئيسية", "المستندات", "المواقع", "الماسح الضوئي"];
+const titles = <String>[
+  "الصفحة الرئيسية",
+  "المستندات",
+  "المواقع",
+  "الماسح الضوئي"
+];
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -681,16 +690,23 @@ class _MyHomePageState extends State<MyHomePage> {
     await speechToTextService.startListening((text) async {
       await writeToBraille('لحظة');
       await ttsService.speak('لحظةً');
+      if (isListeningToPlace) {
+        isListeningToPlace = false;
+        final loc = await Maps.getPositionOf(text);
+        destination = loc['position'];
+        await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
+        await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
+        isDirectionServiceRunning = true;
+        return;
+      }
       if (Maps.isRequestingDirections(text, mapsTerms)) {
         await writeToBraille("إلى أين تريد الذهاب؟");
         await ttsService.speak("إلى أين تريد الذهاب؟");
-        await speechToTextService.startListening((location) async {
-          final loc = await Maps.getPositionOf(location);
-          destination = loc['position'];
-          await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
-          await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
-          isDirectionServiceRunning = true;
-        });
+        printDebug("listening to place...");
+        isListeningToPlace = true;
+        return;
+        // await speechToTextService.startListening((location) async {
+        // });
       } else if (Ocr.isRequestingOCR(text, oCRterms)) {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
@@ -809,11 +825,14 @@ class _MyHomePageState extends State<MyHomePage> {
         0;
     final stepInstruction = steps[stepIndex]['type'];
     String instruction = Maps.instructionType[stepInstruction];
-
-    await writeToBraille(instruction);
-    await ttsService.speak(instruction);
+    if (lastDirectedStep != stepIndex) {
+      lastDirectedStep = stepIndex;
+      await writeToBraille(instruction);
+      await ttsService.speak(instruction);
+    }
     if (stepIndex == steps.length - 1) {
       isDirectionServiceRunning = false;
+      lastDirectedStep = -1;
     }
   }
 }
