@@ -21,7 +21,7 @@ class Ocr {
     }
     similarity = similarity;
     printDebug("Mean similarity: $similarity");
-    return similarity > 0.8;
+    return similarity > 0.7;
   }
 
   static Future<List<String>> loadTerms() async {

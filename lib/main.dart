@@ -37,6 +37,7 @@ Position? destination;
 bool isDirectionServiceRunning = false;
 bool isListeningToPlace = false;
 int lastDirectedStep = -1;
+dynamic directionsSegments;
 
 const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
 const titles = <String>[
@@ -531,6 +532,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final convertedImage = yolo.fromJpegToImg(image);
     final detectedObjects =
         await _runObjectDetectionInBackground(convertedImage);
+    if (detectedObjects.isEmpty) return;
     final priorityObject = _weightOfObjects(detectedObjects, convertedImage);
     printDebug(detectedObjects);
 
@@ -572,6 +574,8 @@ class _MyHomePageState extends State<MyHomePage> {
       await vibrate(objectData['direction'] as String);
     }
     if (weight == 'HIGH') {
+      await writeToBraille("مهلا");
+      await ttsService.speak("مهلا");
       final caption = await VQA().caption(image);
       if (caption != null) {
         await writeToBraille(caption);
@@ -661,21 +665,26 @@ class _MyHomePageState extends State<MyHomePage> {
           direction: '',
           frame: image);
       if (item.ttsServiceNotInitialized()) {
-        
-      item.initTTS();
+        item.initTTS();
       }
-      var previousObject = previousObjects.firstWhere((element) => element?['className'] == label);
+      var previousObject = null;
+      if (previousObjects.isNotEmpty) {
+        previousObject = previousObjects
+            .firstWhere((element) => element?['className'] == label);
+      }
 
       // is object moving - check if the object is moving based on its bounding box
-      if (objectData['boundingBox'] != null && previousObjects.isNotEmpty) {
-        item.isObjectMoving = _isObjectMoving(objectData['boundingBox'], previousObject);
+      if (objectData['boundingBox'] != null &&
+          previousObjects.isNotEmpty &&
+          previousObject != null) {
+        item.isObjectMoving =
+            _isObjectMoving(objectData['boundingBox'], previousObject);
       }
 
-      if (item.isObjectMoving) {
-        item.direction = _getDirection(objectData['boundingBox'], previousObject);
+      if (item.isObjectMoving && previousObject != null) {
+        item.direction =
+            _getDirection(objectData['boundingBox'], previousObject);
       }
-
-
 
       // Measure the weight of the current object
       var itemWeight = item.measureWeight();
@@ -743,6 +752,7 @@ class _MyHomePageState extends State<MyHomePage> {
         destination = loc['position'];
         await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
         await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
+        printDebug("direction service running...");
         isDirectionServiceRunning = true;
         return;
       }
@@ -751,7 +761,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService.speak("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
         isListeningToPlace = true;
-        return;
+        //return;
         // await speechToTextService.startListening((location) async {
         // });
       } else if (Ocr.isRequestingOCR(text, oCRterms)) {
@@ -858,17 +868,30 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> handleDirecting() async {
-    var origin = await Maps.getCurrentPosition();
+    Position? origin;
+    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+        .then((Position position) {
+      origin = position;
+    });
+    if (origin == null) {
+      return;
+    }
     if (origin == null || destination == null || !isDirectionServiceRunning) {
       return;
     }
-    final directionsSegments = await Maps.fetchSegmentsfromAPI(
-        [origin.latitude, origin.longitude],
-        [destination!.latitude, destination!.longitude]);
+
+    directionsSegments ??= await Maps.fetchSegmentsfromAPI(
+          [origin!.latitude, origin!.longitude],
+          [destination!.latitude, destination!.longitude]);
+  
+    if (directionsSegments == null ) {
+      return;
+    }
     final steps = directionsSegments[0]['steps'];
+    printDebug(steps);
     final polyline = directionsSegments[1];
     int? stepIndex = Maps.findCurrentStep(
-            polyline, steps, origin.latitude, origin.longitude) ??
+            polyline, steps, origin!.latitude, origin!.longitude) ??
         0;
     final stepInstruction = steps[stepIndex]['type'];
     String instruction = Maps.instructionType[stepInstruction];
@@ -882,8 +905,9 @@ class _MyHomePageState extends State<MyHomePage> {
       lastDirectedStep = -1;
     }
   }
-  
-  bool _isObjectMoving(Map<String, dynamic>? objectData, Map<String, dynamic>? previousObjectData) {
+
+  bool _isObjectMoving(Map<String, dynamic>? objectData,
+      Map<String, dynamic>? previousObjectData) {
     if (objectData == null || previousObjectData == null) return false;
     const threshold = 10;
 
@@ -891,7 +915,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final dy = (objectData['y'] - previousObjectData['y']).abs();
     return dx > threshold || dy > threshold;
   }
-  
+
   String _getDirection(objectData, Map<String, dynamic>? previousObjectData) {
     if (objectData == null || previousObjectData == null) return '';
     final dx = objectData['x'] - previousObjectData['x'];

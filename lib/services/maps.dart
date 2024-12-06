@@ -21,11 +21,11 @@ class Maps {
     }
     similarity = similarity;
     printDebug("Mean similarity: $similarity");
-    return similarity > 0.8;
+    return similarity > 0.6;
   }
 
   static Future<Position?> getCurrentPosition() async {
-    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high)
+    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
         .then((Position position) {
       return position;
     });
@@ -237,27 +237,35 @@ class Maps {
 
   static getPositionOf(String location) async {
     final locations = await getSavedLocationsJSON();
+    printDebug("getting position of $location");
     if (locations is List) {
-      List<double> similarities = [];
       for (var loc in locations) {
-        int i = 0;
-        final sims = TfIdf(loc['acronyms'].map((e) => Document("${i++}", e)).toList()..add(Document("$i", location)));
-        var similarity = 0.0;
-        for (int j = 0; j < loc['acronyms'].length; j++) {
-          similarity = max(similarity, sims.calculateCosineSimilarity("$j", "$i"));
+        List<String> acronyms =
+            (loc['acronyms'] as List<dynamic>).cast<String>();
+        printDebug(acronyms);
+        for (var acr in acronyms) {
+          if (location.toLowerCase().contains(acr.toLowerCase())) {
+            return loc;
+          }
         }
-        similarities.add(similarity);
-      }
-      if (similarities.isNotEmpty) {
-        return locations[similarities.indexOf(similarities.reduce(max))];
       }
     }
   }
 
-  static Future<List> addLocation(String locationName, List<String> acronyms) async {
+  static Future<List> addLocation(
+      String locationName, List<String> acronyms) async {
     final locations = await getSavedLocationsJSON();
+    Position? origin;
+    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+        .then((Position position) {
+      origin = position;
+    });
     if (locations is List) {
-      locations.add({'name': locationName, 'acronyms': [locationName], 'position': await getCurrentPosition()});
+      locations.add({
+        'name': locationName,
+        'acronyms': [locationName, ...acronyms],
+        'position': origin
+      });
       await File(
               '${(await getApplicationDocumentsDirectory()).path}/config_maps.json')
           .writeAsString(jsonEncode(locations));
@@ -280,8 +288,7 @@ class Maps {
     final locations = await getSavedLocationsJSON();
     if (locations is List) {
       locations.removeAt(index);
-      File(
-              '${(await getApplicationDocumentsDirectory()).path}/config_maps.json')
+      File('${(await getApplicationDocumentsDirectory()).path}/config_maps.json')
           .writeAsString(jsonEncode(locations));
     }
   }
