@@ -19,6 +19,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
@@ -668,7 +669,8 @@ class _MyHomePageState extends State<MyHomePage> {
         item.initTTS();
       }
       Map<String, dynamic>? previousObject;
-      if (previousObjects.isNotEmpty) {
+      // ignore: unnecessary_null_comparison
+      if (previousObjects != null && previousObjects.isNotEmpty && previousObjects.length > 1 && label != null) {
         previousObject = previousObjects
             .firstWhere((element) => element?['className'] == label);
       }
@@ -737,7 +739,7 @@ class _MyHomePageState extends State<MyHomePage> {
         differenceCount++;
       }
     }
-    return ((differenceCount - 0) / 320000) < 0.67;
+    return ((differenceCount - 0) / 320000) < 0.71;
   }
 
   Future<void> _askQuestion() async {
@@ -796,6 +798,7 @@ class _MyHomePageState extends State<MyHomePage> {
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
           await writeToBraille(extracted ?? "لم أستطع تحديد النص");
           await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
+          
         }
       } else {
         if (_currentImg == null) {

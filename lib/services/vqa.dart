@@ -29,6 +29,15 @@ class VQA {
     return response.text;
   }
 
+  /// Asks a question without an image and returns the answer.
+  Future<String?> askWithoutImage(String question) async {
+    final prompt =
+        "Be as a Visual Question Answerer, and for a blind, answer the question: '$question' with short answer IN ARABIC.";
+    final content = [Content.text(prompt)];
+    final response = await model.generateContent(content);
+    return response.text;
+  }
+
   /// Returns a short description of the given image in Arabic suitable for a blind person.
   ///
   /// The description is limited to 30 words and is generated using the Gemini AI model.

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:basera/services/vqa.dart';
@@ -65,6 +66,23 @@ class Ocr {
         "Analyze the text from the provided image and summarize the main ideas clearly and concisely as a paragraph. Return only the summary without additional comments or explanations.",
         copyRotate2);
     printDebug("OCR Result: $text");
+
+    final title = await VQA().askWithoutImage(
+      "I'm going to give you an analyzed summary from an OCR (document), you HAVE to provide a concise title for it. The title should be a single sentence and should be short and to the point. The title should be in Arabic and should not be more than 4 words. the summary is: $text",
+    );
+    final documents = await getConfigFileJSON();
+
+    if (documents is List) {
+      documents.add({
+        'title': title,
+        'summary': text,
+        'image_path': file.path,
+      });
+      await File(
+              '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
+          .writeAsString(jsonEncode(documents));
+    }
+
     return text;
   }
 
@@ -72,7 +90,23 @@ class Ocr {
     File(path).copy("/storage/emulated/0/Download/${path.split("/").last}");
   }
 
-  static void deleteImage(String e) {
+  static void deleteImage(String e) async {
+    var config = await getConfigFileJSON();
     File(e).delete();
+    config.removeWhere((element) => element['image_path'] == e);
+    File(
+            '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
+        .writeAsString(jsonEncode(config));
+  }
+
+  static Future<dynamic> getConfigFileJSON() async {
+    final file = File(
+        '${(await getApplicationDocumentsDirectory()).path}/config_documents.json');
+    if (!file.existsSync()) {
+      await file.create();
+      await file.writeAsString('[]');
+    }
+
+    return await jsonDecode(await file.readAsString());
   }
 }
