@@ -46,7 +46,7 @@ class Maps {
   static Future<dynamic> fetchSegmentsfromAPI(
       List<double> origin, List<double> destination) async {
     final url = Uri.parse(
-        'https://api.openrouteservice.org/v2/directions/foot-walking');
+        'https://api.openrouteservice.org/v2/directions/driving-car');
     final headers = {
       'Content-Type': 'application/json; charset=utf-8',
       'Accept':
@@ -57,6 +57,8 @@ class Maps {
     final body = jsonEncode({
       "coordinates": [origin, destination]
     });
+
+    printDebug('Origin: $origin, Destination: $destination');
 
     try {
       final response = await http.post(url, headers: headers, body: body);
@@ -199,7 +201,7 @@ class Maps {
       return;
     }
     final directionsSegments = await fetchSegmentsfromAPI(
-        [origin.latitude, origin.longitude], destination);
+        [origin.longitude, origin.latitude], destination);
     for (var i = 0; i < directionsSegments.length; i++) {
       final segment = directionsSegments[i];
       final steps = segment['steps'];
@@ -233,9 +235,11 @@ class Maps {
     'وصَلتَ إلى وِجهَتِكَ',
     'إمش في طريق مستقيم',
     '',
+    'إستمر يمينا',
+    'إستمر يسارا',
   ];
 
-  static getPositionOf(String location) async {
+  static Future<Map<String, dynamic>?> getPositionOf(String location) async {
     final locations = await getSavedLocationsJSON();
     printDebug("getting position of $location");
     if (locations is List) {
@@ -244,12 +248,13 @@ class Maps {
             (loc['acronyms'] as List<dynamic>).cast<String>();
         printDebug(acronyms);
         for (var acr in acronyms) {
-          if (location.toLowerCase().contains(acr.toLowerCase())) {
+          if (acr.contains(location)) {
             return loc;
           }
         }
       }
     }
+    return null;
   }
 
   static Future<List> addLocation(

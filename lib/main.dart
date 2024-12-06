@@ -356,6 +356,21 @@ class _MyHomePageState extends State<MyHomePage> {
             floatingActionButton: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                isListeningToPlace ?
+                FloatingActionButton(
+                  heroTag: "أيقاف الموقع",
+                  child: Icon(Icons.location_pin),
+                  onPressed: () {
+                    setState(() async {
+                      isListeningToPlace = false;
+                      lastDirectedStep = -1;
+                      directionsSegments = null;
+                      await ttsService.speak("تم إيقاف التنقل");
+                      await writeToBraille("تم إيقاف التنقل");
+                    });
+                  },
+                ) : SizedBox(height: 0.0),
+                SizedBox(height: 10.0),
                 FloatingActionButton(
                     heroTag: "camera",
                     onPressed: () async {
@@ -377,23 +392,6 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: !isUsingCamera
                         ? const Icon(Icons.camera)
                         : const Icon(Icons.stop_circle_outlined)),
-                //SizedBox(height: 10.0),
-                // FloatingActionButton(
-                //   heroTag: "serial",
-                //   child: (!_isStreamingPort)
-                //       ? const Icon(Icons.usb)
-                //       : const Icon(Icons.usb_off),
-                //   onPressed: () {
-                //     if (_isStreamingPort) {
-                //       _serialportFlutterPlugin.close();
-                //       _isStreamingPort = false;
-                //       return;
-                //     }
-                //     _isStreamingPort = true;
-                //     isUsingCamera = false;
-                //     _readDataFromSerial();
-                //   },
-                // ),
               ],
             ),
             body: Padding(
@@ -749,9 +747,31 @@ class _MyHomePageState extends State<MyHomePage> {
       if (isListeningToPlace) {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(text);
-        destination = loc['position'];
+        if (loc == null) {
+          await writeToBraille("لم يتم العثور على موقعك");
+          await ttsService.speak("لم يتم العثور على موقعك");
+          return;
+        }
+        destination = Position.fromMap(loc['position']);
+        printDebug("going to ${loc['name']}, ${loc['position']}");
         await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
         await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
+        Position? origin;
+        await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.best)
+            .then((Position position) {
+          origin = position;
+        });
+        if (origin == null) {
+          await writeToBraille("لم يتم العثور على موقعك");
+          await ttsService.speak("لم يتم العثور على موقعك");
+          return;
+        }
+
+        directionsSegments = await Maps.fetchSegmentsfromAPI(
+            [origin!.longitude, origin!.latitude],
+            [destination!.longitude, destination!.latitude]);
+        printDebug(directionsSegments);
         printDebug("direction service running...");
         isDirectionServiceRunning = true;
         return;
@@ -880,14 +900,11 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
 
-    directionsSegments ??= await Maps.fetchSegmentsfromAPI(
-          [origin!.latitude, origin!.longitude],
-          [destination!.latitude, destination!.longitude]);
-  
-    if (directionsSegments == null ) {
+    if (directionsSegments == null) {
       return;
     }
-    final steps = directionsSegments[0]['steps'];
+
+    final steps = directionsSegments[0][0]['steps'];
     printDebug(steps);
     final polyline = directionsSegments[1];
     int? stepIndex = Maps.findCurrentStep(
@@ -901,6 +918,7 @@ class _MyHomePageState extends State<MyHomePage> {
       await ttsService.speak(instruction);
     }
     if (stepIndex == steps.length - 1) {
+      directionsSegments = null;
       isDirectionServiceRunning = false;
       lastDirectedStep = -1;
     }

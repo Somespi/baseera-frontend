@@ -1,3 +1,4 @@
+import 'package:basera/services/help_utilities.dart';
 import 'package:basera/services/maps.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -163,6 +164,7 @@ class _MapsRoutePageState extends State<MapsRoutePage> {
 
               // Convert the dynamic data into a List<Widget>
               List<Widget> locationCards = snapshot.data!.map<Widget>((entry) {
+                printDebug(entry['position']);
                 return Card(
                   child: Column(
                     children: [
