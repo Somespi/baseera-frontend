@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:basera/pages/ar_route.dart';
+import 'package:basera/pages/login_route.dart';
 import 'package:basera/pages/maps_route.dart';
 import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/maps.dart';
@@ -22,7 +23,6 @@ import 'package:onnxruntime/onnxruntime.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:serialport_plus/serialport_plus.dart';
-import 'package:usb_serial/usb_serial.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/help_utilities.dart';
 import 'services/priority_manager.dart' as priority_manager;
@@ -129,8 +129,6 @@ Uint8List encodeAsPng(Uint8List rawData, int width, int height) {
 class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = false;
   late OrtSession _interpreter;
-  // ignore: unused_field
-  UsbPort? _port;
   JpegImage? _currentImg;
   final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
@@ -239,7 +237,6 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() async {
     _interpreter.release();
     await _serialportFlutterPlugin.close();
-    await _port?.close();
     OrtEnv.instance.release();
     speechToTextService.dispose();
     _gyroscopeSubscription?.cancel();

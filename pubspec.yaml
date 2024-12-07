@@ -130,6 +130,8 @@ flutter:
     - assets/icons/braille.png
     - assets/icons/motion.png
     - assets/icons/map.png
+    - assets/icons/blind.png
+    - assets/icons/assist.png
     - assets/icons/
     - assets/models/
     - assets/
