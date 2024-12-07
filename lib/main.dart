@@ -146,6 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   int _selectedIndex = 0;
   bool isPerformingAction = false;
+  bool _isAsking = false;
 
   List<Map<String, dynamic>?> previousObjects = [];
 
@@ -416,9 +417,9 @@ class _MyHomePageState extends State<MyHomePage> {
                             color: Color.fromRGBO(236, 246, 255, 1),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(15.0),
-                              side: const BorderSide(
-                                color: Color.fromRGBO(0, 76, 168, 1),
-                                width: 0.7,
+                              side:  BorderSide(
+                                color: _isAsking ? Color.fromRGBO(0, 168, 129, 1) :  Color.fromRGBO(0, 76, 168, 1),
+                                width: _isAsking ? 2.0 : 0.7,
                               ),
                             ),
                             child: SizedBox(
@@ -751,8 +752,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _askQuestion() async {
     await speechToTextService.stopListening();
-
+    
+    _isAsking = true;
     await speechToTextService.startListening((text) async {
+      setState(() {
+        _isAsking  = false;
+      });
+
       await writeToBraille('لحظة');
       await ttsService.speak('لحظةً');
       if (isListeningToPlace) {
@@ -788,7 +794,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (isListeningToPlaceForTaxi) {
         isListeningToPlaceForTaxi = false;
-         Position? origin;
+        Position? origin;
         await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.best)
             .then((Position position) {
@@ -805,14 +811,14 @@ class _MyHomePageState extends State<MyHomePage> {
             await writeToBraille("لم أعثر على شيء, عذرََا");
             await ttsService.speak("لم أعثر على شيء, عذرََا");
           }
-          await writeToBraille("عثرت على ${place!['name']}, سأطلب سائق أُجرةِِ إليه");
-          await ttsService.speak("عثرت على ${place['name']}, سأطلب سائق أُجرةِِ إليه");
+          await writeToBraille(
+              "عثرت على ${place!['name']}, سأطلب سائق أُجرةِِ إليه");
+          await ttsService
+              .speak("عثرت على ${place['name']}, سأطلب سائق أُجرةِِ إليه");
           return;
         }
         destination = Position.fromMap(loc['position']);
         printDebug("going to ${loc['name']}, ${loc['position']}");
-
-       
 
         if (origin == null) {
           await writeToBraille("لم يتم العثور على موقعك");
@@ -833,12 +839,14 @@ class _MyHomePageState extends State<MyHomePage> {
             driverState: "ACCEPT");
 
         await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
-        await ttsService.speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
+        await ttsService
+            .speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
       }
 
       if (UberService.isRequestingTaxi(text, taxiTerms)) {
         await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
-        await ttsService.speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+        await ttsService
+            .speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         isListeningToPlaceForTaxi = true;
       } else if (Maps.isRequestingDirections(text, mapsTerms)) {
         await writeToBraille("إلى أين تريد الذهاب؟");
