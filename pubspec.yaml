@@ -142,3 +142,4 @@ flutter:
     - assets/tessdata/ara.traineddata
     - assets/tessdata_config.json
     - assets/triangle.png
+    - assets/taxi_phrases.txt

@@ -45,8 +45,8 @@ class Maps {
 
   static Future<dynamic> fetchSegmentsfromAPI(
       List<double> origin, List<double> destination) async {
-    final url = Uri.parse(
-        'https://api.openrouteservice.org/v2/directions/driving-car');
+    final url =
+        Uri.parse('https://api.openrouteservice.org/v2/directions/driving-car');
     final headers = {
       'Content-Type': 'application/json; charset=utf-8',
       'Accept':
@@ -295,6 +295,38 @@ class Maps {
       locations.removeAt(index);
       File('${(await getApplicationDocumentsDirectory()).path}/config_maps.json')
           .writeAsString(jsonEncode(locations));
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getClosestLocation({
+    required double latitude,
+    required double longitude,
+    required String placeName,
+  }) async {
+    final String url = "https://api.openrouteservice.org/geocode/search";
+
+    try {
+      final response = await http.get(
+        Uri.parse(
+          "$url?api_key=5b3ce3597851110001cf6248f04ad47b90f04844bbf81c5ee3fd7011&text=$placeName&focus.point.lon=$longitude&focus.point.lat=$latitude&size=1",
+        ),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        if (data['features'] != null && data['features'].isNotEmpty) {
+          return data['features'][0]['properties'];
+        } else {
+          printDebug("No matching locations found.");
+          return null;
+        }
+      } else {
+        printDebug("Failed to fetch data: ${response.statusCode}");
+        return null;
+      }
+    } catch (e) {
+      printDebug("Error occurred: $e");
+      return null;
     }
   }
 }

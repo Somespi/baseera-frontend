@@ -14,7 +14,6 @@ class TextToSpeechService {
     await _flutterTts.setLanguage("ar-SA");
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setVolume(1.0);
-    await _flutterTts.setSpeechRate(1);
     isInitial = true;
   }
 

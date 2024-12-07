@@ -5,12 +5,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:basera/pages/ar_route.dart';
-import 'package:basera/pages/login_route.dart';
 import 'package:basera/pages/maps_route.dart';
 import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/maps.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
+import 'package:basera/services/uber_service.dart';
 import 'package:basera/services/vqa.dart';
 import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/material.dart';
@@ -39,6 +39,9 @@ bool isDirectionServiceRunning = false;
 bool isListeningToPlace = false;
 int lastDirectedStep = -1;
 dynamic directionsSegments;
+
+bool isListeningToPlaceForTaxi = false;
+bool isConfirmingTaxiForOuterPlace = false;
 
 const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
 const titles = <String>[
@@ -136,8 +139,11 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
   priority_manager.PriorityItem? _lastItem;
+
   late List<String> oCRterms;
   late List<String> mapsTerms;
+  late List<String> taxiTerms;
+
   int _selectedIndex = 0;
   bool isPerformingAction = false;
 
@@ -174,7 +180,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _interpreter = await yolo.loadModel();
     oCRterms = await Ocr.loadTerms();
     mapsTerms = await Maps.loadTerms();
-
+    taxiTerms = await UberService.loadTerms();
     setState(() {
       _isLoading = false;
     });
@@ -354,21 +360,22 @@ class _MyHomePageState extends State<MyHomePage> {
             floatingActionButton: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                isDirectionServiceRunning || isListeningToPlace ?
-                FloatingActionButton(
-                  heroTag: "أيقاف الموقع",
-                  child: Icon(Icons.location_pin),
-                  onPressed: () {
-                    setState(() async {
-                      isListeningToPlace = false;
-                      isDirectionServiceRunning = false;
-                      lastDirectedStep = -1;
-                      directionsSegments = null;
-                      await ttsService.speak("تم إيقاف التنقل");
-                      await writeToBraille("تم إيقاف التنقل");
-                    });
-                  },
-                ) : SizedBox(height: 0.0),
+                isDirectionServiceRunning || isListeningToPlace
+                    ? FloatingActionButton(
+                        heroTag: "أيقاف الموقع",
+                        child: Icon(Icons.location_pin),
+                        onPressed: () {
+                          setState(() async {
+                            isListeningToPlace = false;
+                            isDirectionServiceRunning = false;
+                            lastDirectedStep = -1;
+                            directionsSegments = null;
+                            await ttsService.speak("تم إيقاف التنقل");
+                            await writeToBraille("تم إيقاف التنقل");
+                          });
+                        },
+                      )
+                    : SizedBox(height: 0.0),
                 SizedBox(height: 10.0),
                 FloatingActionButton(
                     heroTag: "camera",
@@ -666,7 +673,11 @@ class _MyHomePageState extends State<MyHomePage> {
       }
       Map<String, dynamic>? previousObject;
       // ignore: unnecessary_null_comparison
-      if (previousObjects != null && previousObjects.isNotEmpty && previousObjects.length > 1 && label != null) {
+      if (previousObjects != null &&
+          previousObjects.isNotEmpty &&
+          previousObjects.length > 1 &&
+          // ignore: unnecessary_null_comparison
+          label != null) {
         previousObject = previousObjects
             .firstWhere((element) => element?['className'] == label);
       }
@@ -735,7 +746,7 @@ class _MyHomePageState extends State<MyHomePage> {
         differenceCount++;
       }
     }
-    return ((differenceCount - 0) / 320000) < 0.71;
+    return ((differenceCount - 0) / 320000) < 0.73;
   }
 
   Future<void> _askQuestion() async {
@@ -747,16 +758,6 @@ class _MyHomePageState extends State<MyHomePage> {
       if (isListeningToPlace) {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(text);
-        if (loc == null) {
-          await writeToBraille("لم يتم العثور على موقع محغوظ, يتم البحث في الجوار");
-          await ttsService.speak("لم يتم العثور على موقع محغوظ, يتم البحث في الجوار");
-
-          return;
-        }
-        destination = Position.fromMap(loc['position']);
-        printDebug("going to ${loc['name']}, ${loc['position']}");
-        await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
-        await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
         Position? origin;
         await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.best)
@@ -768,6 +769,13 @@ class _MyHomePageState extends State<MyHomePage> {
           await ttsService.speak("لم يتم العثور على موقعك");
           return;
         }
+        if (loc == null) {
+          return;
+        }
+        destination = Position.fromMap(loc['position']);
+        printDebug("going to ${loc['name']}, ${loc['position']}");
+        await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
+        await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
 
         directionsSegments = await Maps.fetchSegmentsfromAPI(
             [origin!.longitude, origin!.latitude],
@@ -777,14 +785,66 @@ class _MyHomePageState extends State<MyHomePage> {
         isDirectionServiceRunning = true;
         return;
       }
-      if (Maps.isRequestingDirections(text, mapsTerms)) {
+
+      if (isListeningToPlaceForTaxi) {
+        isListeningToPlaceForTaxi = false;
+         Position? origin;
+        await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.best)
+            .then((Position position) {
+          origin = position;
+        });
+
+        final loc = await Maps.getPositionOf(text);
+        if (loc == null) {
+          final place = await Maps.getClosestLocation(
+              latitude: origin!.latitude,
+              longitude: origin!.longitude,
+              placeName: text);
+          if (place == null) {
+            await writeToBraille("لم أعثر على شيء, عذرََا");
+            await ttsService.speak("لم أعثر على شيء, عذرََا");
+          }
+          await writeToBraille("عثرت على ${place!['name']}, سأطلب سائق أُجرةِِ إليه");
+          await ttsService.speak("عثرت على ${place['name']}, سأطلب سائق أُجرةِِ إليه");
+          return;
+        }
+        destination = Position.fromMap(loc['position']);
+        printDebug("going to ${loc['name']}, ${loc['position']}");
+
+       
+
+        if (origin == null) {
+          await writeToBraille("لم يتم العثور على موقعك");
+          await ttsService.speak("لم يتم العثور على موقعك");
+          return;
+        }
+        String runId = await UberService().createSandboxRun(pickupLocation: {
+          "latitude": origin!.latitude,
+          "longitude": origin!.longitude
+        }, dropoffLocation: {
+          "latitude": destination!.latitude,
+          "longitude": destination!.longitude
+        }, parentProductTypeId: "b1afcc8d-02ff-4bfb-be88-b0afed2a0ef2");
+
+        await UberService().updateDriverState(
+            runId: runId,
+            driverId: "d7a1a6a4-1c7d-4c4b-9c9b-4b8b9b8b9b8b",
+            driverState: "ACCEPT");
+
+        await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
+        await ttsService.speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
+      }
+
+      if (UberService.isRequestingTaxi(text, taxiTerms)) {
+        await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+        await ttsService.speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+        isListeningToPlaceForTaxi = true;
+      } else if (Maps.isRequestingDirections(text, mapsTerms)) {
         await writeToBraille("إلى أين تريد الذهاب؟");
         await ttsService.speak("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
         isListeningToPlace = true;
-        //return;
-        // await speechToTextService.startListening((location) async {
-        // });
       } else if (Ocr.isRequestingOCR(text, oCRterms)) {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
@@ -794,7 +854,6 @@ class _MyHomePageState extends State<MyHomePage> {
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
           await writeToBraille(extracted ?? "لم أستطع تحديد النص");
           await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
-          
         }
       } else {
         if (_currentImg == null) {
@@ -808,7 +867,8 @@ class _MyHomePageState extends State<MyHomePage> {
             origin = position;
           });
 
-          final location = await placemarkFromCoordinates(origin?.latitude ?? 0 , origin?.longitude ?? 0);
+          final location = await placemarkFromCoordinates(
+              origin?.latitude ?? 0, origin?.longitude ?? 0);
           final answer = await VQA().ask(
               """Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that 
               ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
