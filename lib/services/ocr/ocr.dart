@@ -12,7 +12,7 @@ import 'package:uuid/uuid.dart';
 import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
 
 class Ocr {
-  static bool isRequestingOCR(String phrase, List<String> terms) {
+  static double isRequestingOCR(String phrase, List<String> terms) {
     int i = 0;
     final sims = TfIdf(terms.map((e) => Document("${i++}", e)).toList()
       ..add(Document("$i", phrase)));
@@ -22,7 +22,7 @@ class Ocr {
     }
     similarity = similarity;
     printDebug("Mean similarity: $similarity");
-    return similarity > 0.7;
+    return similarity;
   }
 
   static Future<List<String>> loadTerms() async {

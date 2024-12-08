@@ -417,8 +417,10 @@ class _MyHomePageState extends State<MyHomePage> {
                             color: Color.fromRGBO(236, 246, 255, 1),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(15.0),
-                              side:  BorderSide(
-                                color: _isAsking ? Color.fromRGBO(0, 168, 129, 1) :  Color.fromRGBO(0, 76, 168, 1),
+                              side: BorderSide(
+                                color: _isAsking
+                                    ? Color.fromRGBO(0, 168, 129, 1)
+                                    : Color.fromRGBO(0, 76, 168, 1),
                                 width: _isAsking ? 2.0 : 0.7,
                               ),
                             ),
@@ -751,12 +753,14 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _askQuestion() async {
-    await speechToTextService.stopListening();
+    if (_isAsking) return;
     
+    await speechToTextService.stopListening();
+
     _isAsking = true;
     await speechToTextService.startListening((text) async {
       setState(() {
-        _isAsking  = false;
+        _isAsking = false;
       });
 
       await writeToBraille('لحظة');
@@ -825,35 +829,49 @@ class _MyHomePageState extends State<MyHomePage> {
           await ttsService.speak("لم يتم العثور على موقعك");
           return;
         }
-        String runId = await UberService().createSandboxRun(pickupLocation: {
-          "latitude": origin!.latitude,
-          "longitude": origin!.longitude
-        }, dropoffLocation: {
-          "latitude": destination!.latitude,
-          "longitude": destination!.longitude
-        }, parentProductTypeId: "b1afcc8d-02ff-4bfb-be88-b0afed2a0ef2");
+        try {
+          String runId = await UberService().createSandboxRun(pickupLocation: {
+            "latitude": origin!.latitude,
+            "longitude": origin!.longitude
+          }, dropoffLocation: {
+            "latitude": destination!.latitude,
+            "longitude": destination!.longitude
+          }, parentProductTypeId: "b1afcc8d-02ff-4bfb-be88-b0afed2a0ef2");
 
-        await UberService().updateDriverState(
-            runId: runId,
-            driverId: "d7a1a6a4-1c7d-4c4b-9c9b-4b8b9b8b9b8b",
-            driverState: "ACCEPT");
+          await UberService().updateDriverState(
+              runId: runId,
+              driverId: "d7a1a6a4-1c7d-4c4b-9c9b-4b8b9b8b9b8b",
+              driverState: "ACCEPT");
 
-        await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
-        await ttsService
-            .speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
+          await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
+          await ttsService
+              .speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
+        } catch (e) {
+          printDebug(e);
+          await writeToBraille("لم يتم العثور على سائق أُجرَة");
+          await ttsService.speak("لم يتم العثور على سائق أُجرَة");
+        }
       }
 
-      if (UberService.isRequestingTaxi(text, taxiTerms)) {
+      final bestClassification = {
+        'taxi': UberService.isRequestingTaxi(text, taxiTerms),
+        'maps': Maps.isRequestingDirections(text, mapsTerms),
+        'ocr': Ocr.isRequestingOCR(text, oCRterms),
+      };
+      final maxClassify = bestClassification.entries.reduce(
+          (current, next) => current.value > next.value ? current : next);
+      printDebug("maxClassify: $maxClassify");
+      if (maxClassify.key == 'taxi' && !(bestClassification['maps']! >= 0.3)) {
         await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         await ttsService
             .speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         isListeningToPlaceForTaxi = true;
-      } else if (Maps.isRequestingDirections(text, mapsTerms)) {
+      } else if (maxClassify.key == 'maps' || bestClassification['maps']! >= 0.3) {
         await writeToBraille("إلى أين تريد الذهاب؟");
         await ttsService.speak("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
         isListeningToPlace = true;
-      } else if (Ocr.isRequestingOCR(text, oCRterms)) {
+      } else if (maxClassify.key == 'ocr' && maxClassify.value > 0.6) {
         if (_currentImg == null) {
           await writeToBraille("يجب فتح الكَمِرا");
           await ttsService.speak("يجب فتح الكاميرا");

@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 class Maps {
-  static bool isRequestingDirections(String phrase, List<String> terms) {
+  static double   isRequestingDirections(String phrase, List<String> terms) {
     int i = 0;
     final sims = TfIdf(terms.map((e) => Document("${i++}", e)).toList()
       ..add(Document("$i", phrase)));
@@ -21,17 +21,29 @@ class Maps {
     }
     similarity = similarity;
     printDebug("Mean similarity: $similarity");
-    return similarity > 0.6;
+    return similarity;
   }
+    // Create a list of documents, each with a word from the terms list.
+    // The last document is the phrase we're trying to determine if it's asking
+    // for directions.
 
   static Future<Position?> getCurrentPosition() async {
     await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+
+    // Calculate the cosine similarity between the phrase and each of the terms
+    // in the list.
         .then((Position position) {
       return position;
+      // Calculate the cosine similarity between the jth term and the phrase.
     });
     return null;
+
+    // Print the mean similarity to the console.
   }
 
+
+    // If the mean similarity is greater than 0.6, then the phrase is asking
+    // for directions.
   static Future<dynamic> getDirections(
       Position origin, Position destination) async {
     final directionsSegments = await fetchSegmentsfromAPI(

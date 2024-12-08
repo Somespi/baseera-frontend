@@ -124,7 +124,7 @@ Future<void> updateDriverState({
         .split('\n');
   }
 
-  static bool isRequestingTaxi(String phrase, List<String> terms) {
+  static double isRequestingTaxi(String phrase, List<String> terms) {
     int i = 0;
     final sims = TfIdf(terms.map((e) => Document("${i++}", e)).toList()
       ..add(Document("$i", phrase)));
@@ -134,7 +134,7 @@ Future<void> updateDriverState({
     }
     similarity = similarity;
     printDebug("Mean similarity: $similarity");
-    return similarity > 0.1;
+    return similarity;
   }
 
 }
