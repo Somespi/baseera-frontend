@@ -58,6 +58,7 @@ var assistiveUnits = [
     "connectedCharacteristic": null,
     "connectedService": null,
     "isConnected": false,
+    "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
     "image": "assets/icons/braille.png",
     "description":
         "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
@@ -68,6 +69,7 @@ var assistiveUnits = [
     "connectedDevice": null,
     "connectedCharacteristic": null,
     "connectedService": null,
+    "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
     "isConnected": false,
     "image": "assets/icons/motion.png",
     "description":
@@ -605,7 +607,11 @@ class _MyHomePageState extends State<MyHomePage> {
       BluetoothCharacteristic? characteristic = assistiveUnits[0]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
-        await characteristic.write(utf8.encode(caption));
+        try {
+          await characteristic.write(utf8.encode(caption));
+        } catch (e) {
+          printDebug("ERROR!");
+        }
       } else {
         printDebug("Characteristic is null.");
       }
@@ -754,7 +760,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _askQuestion() async {
     if (_isAsking) return;
-    
+
     await speechToTextService.stopListening();
 
     _isAsking = true;
@@ -866,7 +872,8 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService
             .speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         isListeningToPlaceForTaxi = true;
-      } else if (maxClassify.key == 'maps' || bestClassification['maps']! >= 0.3) {
+      } else if (maxClassify.key == 'maps' ||
+          bestClassification['maps']! >= 0.3) {
         await writeToBraille("إلى أين تريد الذهاب؟");
         await ttsService.speak("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
@@ -909,8 +916,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void _connectToAU(Map<String, Object?> au) async {
     var targetDeviceName = au["deviceName"] as String;
-    const targetServiceUuid = "00001800-0000-1000-8000-00805f9b34fb";
-    const targetCharacteristicUuid = "00002a00-0000-1000-8000-00805f9b34fb";
 
     try {
       printDebug("Scanning for devices...");
@@ -930,28 +935,33 @@ class _MyHomePageState extends State<MyHomePage> {
 
             var services = await (au["connectedDevice"] as BluetoothDevice?)!
                 .discoverServices();
-            for (var service in services) {
-              printDebug('Service: ${service.uuid}');
-              if (service.uuid.toString() == targetServiceUuid) {
-                au["connectedService"] = service;
 
-                for (var characteristic in service.characteristics) {
-                  printDebug('Characteristic: ${characteristic.uuid}');
-                  if (characteristic.uuid.toString() ==
-                      targetCharacteristicUuid) {
-                    au["connectedCharacteristic"] = characteristic;
-                    setState(() {
-                      au["isConnected"] = true;
-                    });
-                    printDebug("Target characteristic saved!");
-                    break;
-                  }
+            //for (var service in services) {
+            //printDebug('Service: ${service.uuid}, service: ${service.characteristics}');
+            //if (service.uuid.toString() == targetServiceUuid) {
+            int i = 1;
+            for (var char in services) {
+              printDebug("SCANNING IN SERVICE #$i");
+              for (var prop in char.characteristics) {
+                if (prop.characteristicUuid.str == 'beb5483e-36e1-4688-b7f5-ea07361b26a1') {
+                  printDebug(
+                      "Found=================== ${prop.characteristicUuid}");
+                  au["connectedCharacteristic"] = prop;
+                  au["connectedService"] = char;
+                  printDebug("Connected char...");
+                  setState(() {
+                    au["isConnected"] = true;
+                  });
+                  printDebug("Target characteristic saved!");
+                  break;
                 }
-                break;
               }
+              i++;
             }
           }
+          break;
         }
+        //}
       });
 
       await Future.delayed(Duration(seconds: 5));

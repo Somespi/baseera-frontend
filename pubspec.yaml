@@ -67,6 +67,7 @@ dependencies:
   sound_generator: ^0.0.11
   geocoding: ^3.0.0
   geolocator: ^12.0.0
+  flutter_reactive_ble: ^5.3.1
 
 dev_dependencies:
   flutter_test:
