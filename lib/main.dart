@@ -53,7 +53,7 @@ const titles = <String>[
 var assistiveUnits = [
   {
     "name": "خلية برايل",
-    "deviceName": "ESP32_Braille_Device",
+    "deviceName": "3C:84:27:C3:33:99",
     "connectedDevice": null,
     "connectedCharacteristic": null,
     "connectedService": null,
@@ -64,7 +64,7 @@ var assistiveUnits = [
   },
   {
     "name": "هزازات الحركة",
-    "deviceName": "NanoESP32_BuzzerControl",
+    "deviceName": "24:D7:EB:0F:09:02",
     "connectedDevice": null,
     "connectedCharacteristic": null,
     "connectedService": null,
@@ -920,7 +920,7 @@ class _MyHomePageState extends State<MyHomePage> {
         for (ScanResult result in results) {
           printDebug(
               'Found device: ${result.device.advName}, ID: ${result.device.remoteId}');
-          if (result.device.advName == targetDeviceName) {
+          if (result.device.remoteId.str == targetDeviceName) {
             await FlutterBluePlus.stopScan();
             printDebug("Connecting to ${result.device.advName}...");
 
