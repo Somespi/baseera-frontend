@@ -583,21 +583,21 @@ class _MyHomePageState extends State<MyHomePage> {
       await vibrate(objectData['direction'] as String);
     }
     if (weight == 'HIGH') {
-      await writeToBraille("مهلا");
       await ttsService.speak("مهلا");
+      await writeToBraille("مهلا");
       final caption = await VQA().caption(image);
       if (caption != null) {
-        await writeToBraille(caption);
         await ttsService.speak(caption);
+        await writeToBraille(caption);
       } else {
-        await writeToBraille(yolo.labelsToArabic[label]!);
         await ttsService.speak(yolo.labelsToArabic[label]!);
+        await writeToBraille(yolo.labelsToArabic[label]!);
       }
     } else if (weight == 'MEDIUM') {
       await HapticFeedback.mediumImpact();
       if (confidence > 0.7) {
-        await writeToBraille(yolo.labelsToArabic[label]!);
         await ttsService.speak(yolo.labelsToArabic[label]!);
+        await writeToBraille(yolo.labelsToArabic[label]!);
       }
     }
   }
@@ -769,8 +769,8 @@ class _MyHomePageState extends State<MyHomePage> {
         _isAsking = false;
       });
 
-      await writeToBraille('لحظة');
       await ttsService.speak('لحظةً');
+      await writeToBraille('لحظة');
       if (isListeningToPlace) {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(text);
@@ -781,8 +781,8 @@ class _MyHomePageState extends State<MyHomePage> {
           origin = position;
         });
         if (origin == null) {
-          await writeToBraille("لم يتم العثور على موقعك");
           await ttsService.speak("لم يتم العثور على موقعك");
+          await writeToBraille("لم يتم العثور على موقعك");
           return;
         }
         if (loc == null) {
@@ -790,8 +790,8 @@ class _MyHomePageState extends State<MyHomePage> {
         }
         destination = Position.fromMap(loc['position']);
         printDebug("going to ${loc['name']}, ${loc['position']}");
-        await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
         await ttsService.speak("سَيَتِم توجيهك إلى ${loc['name']}");
+        await writeToBraille("سَيَتِم توجيهك إلى ${loc['name']}");
 
         directionsSegments = await Maps.fetchSegmentsfromAPI(
             [origin!.longitude, origin!.latitude],
@@ -818,21 +818,21 @@ class _MyHomePageState extends State<MyHomePage> {
               longitude: origin!.longitude,
               placeName: text);
           if (place == null) {
-            await writeToBraille("لم أعثر على شيء, عذرََا");
             await ttsService.speak("لم أعثر على شيء, عذرََا");
+            await writeToBraille("لم أعثر على شيء, عذرََا");
           }
-          await writeToBraille(
-              "عثرت على ${place!['name']}, سأطلب سائق أُجرةِِ إليه");
           await ttsService
-              .speak("عثرت على ${place['name']}, سأطلب سائق أُجرةِِ إليه");
+              .speak("عثرت على ${place!['name']}, سأطلب سائق أُجرةِِ إليه");
+          await writeToBraille(
+              "عثرت على ${place['name']}, سأطلب سائق أُجرةِِ إليه");
           return;
         }
         destination = Position.fromMap(loc['position']);
         printDebug("going to ${loc['name']}, ${loc['position']}");
 
         if (origin == null) {
-          await writeToBraille("لم يتم العثور على موقعك");
           await ttsService.speak("لم يتم العثور على موقعك");
+          await writeToBraille("لم يتم العثور على موقعك");
           return;
         }
         try {
@@ -849,13 +849,13 @@ class _MyHomePageState extends State<MyHomePage> {
               driverId: "d7a1a6a4-1c7d-4c4b-9c9b-4b8b9b8b9b8b",
               driverState: "ACCEPT");
 
-          await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
           await ttsService
               .speak("قُمتُ بطلب سائق أُجرَة ليوصلَك إلى ${loc['name']}");
+          await writeToBraille("قُمتُ بطلب سائق أُجرَة إلى ${loc['name']}");
         } catch (e) {
           printDebug(e);
-          await writeToBraille("لم يتم العثور على سائق أُجرَة");
           await ttsService.speak("لم يتم العثور على سائق أُجرَة");
+          await writeToBraille("لم يتم العثور على سائق أُجرَة");
         }
       }
 
@@ -868,30 +868,30 @@ class _MyHomePageState extends State<MyHomePage> {
           (current, next) => current.value > next.value ? current : next);
       printDebug("maxClassify: $maxClassify");
       if (maxClassify.key == 'taxi' && !(bestClassification['maps']! >= 0.3)) {
-        await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         await ttsService
             .speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+        await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         isListeningToPlaceForTaxi = true;
       } else if (maxClassify.key == 'maps' ||
           bestClassification['maps']! >= 0.3) {
-        await writeToBraille("إلى أين تريد الذهاب؟");
         await ttsService.speak("إلى أين تريد الذهاب؟");
+        await writeToBraille("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
         isListeningToPlace = true;
       } else if (maxClassify.key == 'ocr' && maxClassify.value > 0.6) {
         if (_currentImg == null) {
+          await ttsService.speak("يجب فتح الكَمِرا");
           await writeToBraille("يجب فتح الكَمِرا");
-          await ttsService.speak("يجب فتح الكاميرا");
         } else {
           final extracted =
               await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
-          await writeToBraille(extracted ?? "لم أستطع تحديد النص");
           await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
+          await writeToBraille(extracted ?? "لم أستطع تحديد النص");
         }
       } else {
         if (_currentImg == null) {
+          await ttsService.speak("يجب فتح الكَمِرا");
           await writeToBraille("يجب فتح الكَمِرا");
-          await ttsService.speak("يجب فتح الكاميرا");
         } else {
           Position? origin;
           await Geolocator.getCurrentPosition(
@@ -907,8 +907,8 @@ class _MyHomePageState extends State<MyHomePage> {
               ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
               ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
               yolo.fromJpegToImg(_currentImg!));
+          await ttsService.speak(answer as String);
           await writeToBraille(answer as String);
-          await ttsService.speak(answer);
         }
       }
     });
@@ -1022,8 +1022,8 @@ class _MyHomePageState extends State<MyHomePage> {
     String instruction = Maps.instructionType[stepInstruction];
     if (lastDirectedStep != stepIndex) {
       lastDirectedStep = stepIndex;
-      await writeToBraille(instruction);
       await ttsService.speak(instruction);
+      await writeToBraille(instruction);
     }
     if (stepIndex == steps.length - 1) {
       directionsSegments = null;
