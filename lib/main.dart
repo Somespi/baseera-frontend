@@ -581,6 +581,8 @@ class _MyHomePageState extends State<MyHomePage> {
     await HapticFeedback.vibrate();
     if (objectData['isObjectMoving'] as bool) {
       await vibrate(objectData['direction'] as String);
+    } else {
+      await vibrate("ALL");
     }
     if (weight == 'HIGH') {
       await ttsService.speak("مهلا");
