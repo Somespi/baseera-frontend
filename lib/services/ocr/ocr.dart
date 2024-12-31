@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-import 'package:flutter_tesseract_ocr/flutter_tesseract_ocr.dart';
 
 class Ocr {
   static double isRequestingOCR(String phrase, List<String> terms) {
@@ -32,26 +31,6 @@ class Ocr {
 
   static Future<String> getWorkingDir() async {
     return (await getApplicationDocumentsDirectory()).path;
-  }
-
-  static Future<String?> performOcr(Image image) async {
-    final workingDir = (await getApplicationDocumentsDirectory());
-    if (!File("${workingDir.path}/config.json").existsSync()) {
-      File('${workingDir.path}/config.json').createSync();
-    }
-    final uuid = Uuid().v1();
-    final file = File('${workingDir.path}/$uuid.png');
-    await file.writeAsBytes(
-        encodeJpg(copyRotate(image, angle: 90)).buffer.asUint8List(),
-        mode: FileMode.write);
-    final text = await FlutterTesseractOcr.extractText(file.path,
-        language: 'ara+eng',
-        args: {
-          "psm": "4",
-          "preserve_interword_spaces": "1",
-        });
-    printDebug("OCR Result: $text");
-    return text;
   }
 
   static Future<String?> performOcrVQA(Image image) async {

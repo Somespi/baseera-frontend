@@ -12,7 +12,6 @@ import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/uber_service.dart';
 import 'package:basera/services/vqa.dart';
-import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -20,14 +19,16 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
 import 'package:onnxruntime/onnxruntime.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:serialport_plus/serialport_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:uuid/uuid.dart';
 import 'services/help_utilities.dart';
 import 'services/priority_manager.dart' as priority_manager;
 import 'services/text_to_speech.dart';
-import 'services/yolo.dart' as yolo;
+
+import 'package:http/http.dart' as http;
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
@@ -42,6 +43,11 @@ dynamic directionsSegments;
 
 bool isListeningToPlaceForTaxi = false;
 bool isConfirmingTaxiForOuterPlace = false;
+
+String lastSentData = "";
+bool isRasberryConnected = false;
+
+String connectedIp = "";
 
 const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
 const titles = <String>[
@@ -89,7 +95,6 @@ void main() async {
     exit(1);
   }
   await ttsService.initTTS();
-  labels = await yolo.loadLabels();
   await speechToTextService.initialize();
 
   runApp(const MyApp());
@@ -133,22 +138,21 @@ Uint8List encodeAsPng(Uint8List rawData, int width, int height) {
 
 class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = false;
-  late OrtSession _interpreter;
-  JpegImage? _currentImg;
-  final _serialportFlutterPlugin = SerialportPlus();
   bool isPersonMoving = false;
-  Nv21Image? lastFrame;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
-  priority_manager.PriorityItem? _lastItem;
 
   late List<String> oCRterms;
   late List<String> mapsTerms;
   late List<String> taxiTerms;
 
   int _selectedIndex = 0;
+  BluetoothCharacteristic? _txRxDevice;
+  bool _lastIsPersonMoving = false;
   bool isPerformingAction = false;
   bool _isAsking = false;
+  String foundDeviceName = "";
+  bool isScanning = false;
 
   List<Map<String, dynamic>?> previousObjects = [];
 
@@ -180,10 +184,10 @@ class _MyHomePageState extends State<MyHomePage> {
       _isLoading = false;
     });
 
-    _interpreter = await yolo.loadModel();
     oCRterms = await Ocr.loadTerms();
     mapsTerms = await Maps.loadTerms();
     taxiTerms = await UberService.loadTerms();
+
     setState(() {
       _isLoading = false;
     });
@@ -218,17 +222,8 @@ class _MyHomePageState extends State<MyHomePage> {
     return true;
   }
 
-  /// Initializes the gyroscope listener to monitor device movement.
-  ///
-  /// This function listens to the gyroscope event stream and updates the
-  /// [isPersonMoving] state variable based on the magnitude of the gyroscope
-  /// readings. If the magnitude exceeds [movementThreshold], [isPersonMoving]
-  /// is set to true, indicating that the device is moving.
-  ///
-  /// The [movementThreshold] is set to 0.2, which is a common value to
-  /// detect movement.
   void _initializeGyroscope() {
-    const double movementThreshold = 0.2; // Threshold for movement detection
+    const double movementThreshold = 0.2;
     // Subscribe to the gyroscope event stream
     _gyroscopeSubscription =
         gyroscopeEventStream().listen((GyroscopeEvent event) {
@@ -236,16 +231,20 @@ class _MyHomePageState extends State<MyHomePage> {
       final double magnitude =
           (event.x * event.x) + (event.y * event.y) + (event.z * event.z);
       setState(() {
-        // Update the movement state based on the calculated magnitude
         isPersonMoving = magnitude > movementThreshold;
+        if (isPersonMoving != _lastIsPersonMoving) {
+          _lastIsPersonMoving = isPersonMoving;
+          if (_txRxDevice != null) {
+            _txRxDevice!
+                .write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
+          }
+        }
       });
     });
   }
 
   @override
   void dispose() async {
-    _interpreter.release();
-    await _serialportFlutterPlugin.close();
     OrtEnv.instance.release();
     speechToTextService.dispose();
     _gyroscopeSubscription?.cancel();
@@ -261,20 +260,6 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-
-  /// Builds the main home page widget.
-  ///
-  /// This widget displays a floating action button that reads data from the
-  /// serial port and runs object detection on the received images. The
-  /// results of the object detection are displayed in the center of the
-  /// screen.
-  ///
-  /// The widget also displays a spinner while the model is being loaded.
-  ///
-  /// The widget listens to the gyroscope data stream and sets the
-  /// [isPersonMoving] flag to true if the magnitude of the gyroscope data
-  /// exceeds a certain threshold. This flag is used to determine the weight
-  /// of the detected objects.
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
@@ -287,321 +272,356 @@ class _MyHomePageState extends State<MyHomePage> {
       );
     }
 
-    return CameraAwesomeBuilder.analysisOnly(
-        onImageForAnalysis: (image) async {
-          if (!isUsingCamera) {
-            return;
-          }
-          handleDirecting();
-          if (lastFrame == null) {
-            lastFrame = image as Nv21Image;
-            return;
-          }
-          final bool isIdentical =
-              _compareImages(lastFrame!, image as Nv21Image);
-          if (isIdentical) {
-            return;
-          }
-          lastFrame = image;
-          image = await (image).toJpeg();
-          _currentImg = image as JpegImage?;
-          _readDataFromCameraStream(image as JpegImage);
+    return Scaffold(
+      bottomNavigationBar: NavigationBar(
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+        selectedIndex: _selectedIndex,
+        destinations: const <NavigationDestination>[
+          NavigationDestination(
+            icon: Icon(Icons.home),
+            label: 'الرئيسية',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.document_scanner),
+            label: 'المستندات',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.location_pin),
+            label: 'المواقع',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.crop_square_rounded),
+            label: 'الماسح الضوئي',
+          ),
+        ],
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
         },
-        imageAnalysisConfig: AnalysisConfig(
-          androidOptions: const AndroidAnalysisOptions.nv21(width: 480),
-          autoStart: true,
-          maxFramesPerSecond: 5,
+      ),
+      backgroundColor: Color.fromRGBO(243, 243, 243, 1),
+      appBar: AppBar(
+        title: Text(
+          titles[_selectedIndex],
+          style: TextStyle(
+              fontFamily: 'Changa', fontWeight: FontWeight.bold, fontSize: 20),
         ),
-        builder: (controller, preview) {
-          () async {
-            if (!isUsingCamera) {
-              try {
-                await controller.analysisController?.stop();
-              } catch (e) {}
-              await controller.analysisController?.imageSubscription?.cancel();
-              controller.analysisController?.imageSubscription = null;
-            }
-          }();
-          return Scaffold(
-            bottomNavigationBar: NavigationBar(
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-              selectedIndex: _selectedIndex,
-              destinations: const <NavigationDestination>[
-                NavigationDestination(
-                  icon: Icon(Icons.home),
-                  label: 'الرئيسية',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.document_scanner),
-                  label: 'المستندات',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.location_pin),
-                  label: 'المواقع',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.crop_square_rounded),
-                  label: 'الماسح الضوئي',
-                ),
-              ],
-              onDestinationSelected: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          isDirectionServiceRunning || isListeningToPlace
+              ? FloatingActionButton(
+                  heroTag: "أيقاف الموقع",
+                  child: Icon(Icons.location_pin),
+                  onPressed: () {
+                    setState(() async {
+                      isListeningToPlace = false;
+                      isDirectionServiceRunning = false;
+                      lastDirectedStep = -1;
+                      directionsSegments = null;
+                      await ttsService.speak("تم إيقاف التنقل");
+                      await writeToBraille("تم إيقاف التنقل");
+                    });
+                  },
+                )
+              : SizedBox(height: 0.0),
+          SizedBox(height: 10.0),
+          FloatingActionButton(
+              heroTag: "camera",
+              onPressed: () async {
+                printDebug("Detecting press...");
+                readFromBLEStream();
               },
-            ),
-            backgroundColor: Color.fromRGBO(243, 243, 243, 1),
-            appBar: AppBar(
-              title: Text(
-                titles[_selectedIndex],
-                style: TextStyle(
-                    fontFamily: 'Changa',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 20),
-              ),
-            ),
-            floatingActionButton: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                isDirectionServiceRunning || isListeningToPlace
-                    ? FloatingActionButton(
-                        heroTag: "أيقاف الموقع",
-                        child: Icon(Icons.location_pin),
-                        onPressed: () {
-                          setState(() async {
-                            isListeningToPlace = false;
-                            isDirectionServiceRunning = false;
-                            lastDirectedStep = -1;
-                            directionsSegments = null;
-                            await ttsService.speak("تم إيقاف التنقل");
-                            await writeToBraille("تم إيقاف التنقل");
-                          });
-                        },
-                      )
-                    : SizedBox(height: 0.0),
-                SizedBox(height: 10.0),
-                FloatingActionButton(
-                    heroTag: "camera",
-                    onPressed: () async {
-                      printDebug("Detecting press...");
-                      if (isUsingCamera) {
-                        try {
-                          await controller.analysisController?.stop();
-                        } catch (e) {}
-                        await controller.analysisController?.imageSubscription
-                            ?.cancel();
-                        controller.analysisController?.imageSubscription = null;
-
-                        isUsingCamera = false;
-                      } else {
-                        controller.analysisController?.start();
-                        isUsingCamera = true;
-                      }
+              child: !isRasberryConnected
+                  ? isScanning
+                      ? const CircularProgressIndicator()
+                      : const Icon(Icons.camera)
+                  : const Icon(Icons.stop_circle_outlined)),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: _selectedIndex != 0
+            ? routes[_selectedIndex]!
+            : Column(
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(15.0),
+                    onTap: () async {
+                      await _askQuestion();
+                      //await speechToTextService.stopListening();
                     },
-                    child: !isUsingCamera
-                        ? const Icon(Icons.camera)
-                        : const Icon(Icons.stop_circle_outlined)),
-              ],
-            ),
-            body: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: _selectedIndex != 0
-                  ? routes[_selectedIndex]!
-                  : Column(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(15.0),
-                          onTap: () async {
-                            await _askQuestion();
-                            //await speechToTextService.stopListening();
-                          },
-                          child: Card(
-                            color: Color.fromRGBO(236, 246, 255, 1),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15.0),
-                              side: BorderSide(
-                                color: _isAsking
-                                    ? Color.fromRGBO(0, 168, 129, 1)
-                                    : Color.fromRGBO(0, 76, 168, 1),
-                                width: _isAsking ? 2.0 : 0.7,
-                              ),
-                            ),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: Flex(
-                                      direction: Axis.horizontal,
-                                      children: [
-                                        Image(
-                                          image: AssetImage(
-                                              'assets/icons/eye.png'),
-                                          width: 100.0,
-                                          height: 100.0,
-                                        ),
-                                        //const Spacer(),
-                                        Center(
-                                          child: Text(
-                                            "استفسر عن ما يحيطك",
-                                            style: GoogleFonts.rubik(
-                                              textStyle: const TextStyle(
-                                                color: Colors.black,
-                                                fontSize: 20,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ])),
-                            ),
-                          ),
+                    child: Card(
+                      color: Color.fromRGBO(236, 246, 255, 1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                        side: BorderSide(
+                          color: _isAsking
+                              ? Color.fromRGBO(0, 168, 129, 1)
+                              : Color.fromRGBO(0, 76, 168, 1),
+                          width: _isAsking ? 2.0 : 0.7,
                         ),
-                        const SizedBox(height: 30.0),
-                        Text("الوحدات المساعدة (AUs)",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Changa',
-                              color: Color.fromARGB(255, 0, 0, 0),
-                              fontSize: 14,
-                            )),
-                        const SizedBox(height: 10.0),
-                        Expanded(
-                          child: GridView.count(
-                            crossAxisCount: 2,
-                            children: assistiveUnits.map((au) {
-                              return Card(
-                                color: Colors.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(15.0),
-                                ),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        au['name'] as String,
-                                        style: GoogleFonts.rubik(
-                                          textStyle: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 20),
-                                        ),
-                                      ),
-                                      //const SizedBox(height: 8.0),
-                                      Image(
-                                        image:
-                                            AssetImage(au['image'] as String),
-                                        width: 100.0,
-                                      ),
-                                      //const SizedBox(height: 5.0),
-                                      ElevatedButton(
-                                        onPressed: () async {
-                                          if (au['isConnected'] as bool) {
-                                            _disconnectFromAU(au);
-                                          } else {
-                                            _connectToAU(au);
-                                          }
-                                        },
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              !(au['isConnected'] as bool)
-                                                  ? Colors.blue[500]
-                                                  : Colors.red[500],
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8.0),
-                                          ),
-                                          fixedSize: const Size(100, 30),
-                                        ),
-                                        child: Text(
-                                          !(au['isConnected'] as bool)
-                                              ? "اقتران"
-                                              : "انفصال",
-                                          style: GoogleFonts.rubik(
-                                              textStyle: TextStyle(
-                                                  fontSize: 16,
-                                                  color: Colors.white)),
-                                        ),
-                                      ),
-                                    ],
+                      ),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Flex(direction: Axis.horizontal, children: [
+                              Image(
+                                image: AssetImage('assets/icons/eye.png'),
+                                width: 100.0,
+                                height: 100.0,
+                              ),
+                              //const Spacer(),
+                              Center(
+                                child: Text(
+                                  "استفسر عن ما يحيطك",
+                                  style: GoogleFonts.rubik(
+                                    textStyle: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 20,
+                                    ),
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                        )
-                      ],
+                              ),
+                            ])),
+                      ),
                     ),
-            ),
-          );
-        });
+                  ),
+                  const SizedBox(height: 30.0),
+                  Text("الوحدات المساعدة (AUs)",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Changa',
+                        color: Color.fromARGB(255, 0, 0, 0),
+                        fontSize: 14,
+                      )),
+                  const SizedBox(height: 10.0),
+                  Expanded(
+                    child: GridView.count(
+                      crossAxisCount: 2,
+                      children: assistiveUnits.map((au) {
+                        return Card(
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15.0),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  au['name'] as String,
+                                  style: GoogleFonts.rubik(
+                                    textStyle: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 20),
+                                  ),
+                                ),
+                                //const SizedBox(height: 8.0),
+                                Image(
+                                  image: AssetImage(au['image'] as String),
+                                  width: 100.0,
+                                ),
+                                //const SizedBox(height: 5.0),
+                                ElevatedButton(
+                                  onPressed: () async {
+                                    if (au['isConnected'] as bool) {
+                                      _disconnectFromAU(au);
+                                    } else {
+                                      _connectToAU(au);
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        !(au['isConnected'] as bool)
+                                            ? Colors.blue[500]
+                                            : Colors.red[500],
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8.0),
+                                    ),
+                                    fixedSize: const Size(100, 30),
+                                  ),
+                                  child: Text(
+                                    !(au['isConnected'] as bool)
+                                        ? "اقتران"
+                                        : "انفصال",
+                                    style: GoogleFonts.rubik(
+                                        textStyle: TextStyle(
+                                            fontSize: 16, color: Colors.white)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
   }
 
-  Future<void> _readDataFromCameraStream(JpegImage image) async {
-    if (!isUsingCamera) return;
+  // Future<void> _readDataFromCameraStream(JpegImage image) async {
+  //   if (!isUsingCamera) return;
 
-    final convertedImage = yolo.fromJpegToImg(image);
-    final detectedObjects =
-        await _runObjectDetectionInBackground(convertedImage);
-    if (detectedObjects.isEmpty) return;
-    final priorityObject = _weightOfObjects(detectedObjects, convertedImage);
-    printDebug(detectedObjects);
+  //   final detectedObjects = [];
+  //   if (detectedObjects.isEmpty) return;
+  //   final priorityObject = ""; //_analyzeObjects(detectedObjects);
+  //   printDebug(detectedObjects);
 
-    if (priorityObject != null) {
-      final parameters = {
-        'weight': priorityObject.measureWeight(),
-        'nv21Image': convertedImage,
-        'label': priorityObject.label,
-        'confidence': detectedObjects.firstWhere(
-            (obj) => obj['className'] == priorityObject.label)['confidence'],
-        'isPersonMoving': priorityObject.isPersonMoving,
-        'isObjectMoving': priorityObject.isObjectMoving,
-        'direction': priorityObject.direction
-      };
+  //   if (priorityObject != null) {
+  //     final parameters = {
+  //       'weight': priorityObject.measureWeight(),
+  //       'label': priorityObject.label,
+  //       'confidence': detectedObjects.firstWhere(
+  //           (obj) => obj['className'] == priorityObject.label)['confidence'],
+  //       'isPersonMoving': priorityObject.isPersonMoving,
+  //       'isObjectMoving': priorityObject.isObjectMoving,
+  //       'direction': priorityObject.direction
+  //     };
 
-      if (_lastItem == null ||
-          priorityObject.itemInitializedAt
-                  .difference(_lastItem!.itemInitializedAt)
-                  .inSeconds >
-              2.5) {
-        _lastItem = priorityObject;
+  //     if (_lastItem == null ||
+  //         priorityObject.itemInitializedAt
+  //                 .difference(_lastItem!.itemInitializedAt)
+  //                 .inSeconds >
+  //             2.5) {
+  //       _lastItem = priorityObject;
 
-        if (isPerformingAction) return;
-        isPerformingAction = true;
-        printDebug("Performing action...");
-        _taskEntryPoint(parameters).then((_) => isPerformingAction = false);
-      }
+  //       if (isPerformingAction) return;
+  //       isPerformingAction = true;
+  //       printDebug("Performing action...");
+  //       _taskEntryPoint(parameters).then((_) => isPerformingAction = false);
+  //     }
+  //   }
+  // }
+
+  Future<void> readFromBLEStream() async {
+    isScanning = true;
+    final bleConnection = await _connectToRPi5();
+    if (bleConnection['device'] == null) {
+      isScanning = false;
+      return;
     }
-  }
 
-  static Future<void> _taskEntryPoint(Map<String, dynamic> objectData) async {
-    final weight = objectData['weight'] as String;
-    final image = objectData['nv21Image'] as img.Image;
-    final label = objectData['label'] as String;
-    final confidence = objectData['confidence'] as double;
+    final device = bleConnection['device'] as BluetoothDevice;
+    final wifiChar = bleConnection['wifi'] as BluetoothCharacteristic;
+    final txrxChar = bleConnection['txrx'] as BluetoothCharacteristic;
+    final ipChar = bleConnection['ip'] as BluetoothCharacteristic;
 
-    await HapticFeedback.vibrate();
-    if (objectData['isObjectMoving'] as bool) {
-      await vibrate(objectData['direction'] as String);
-    } else {
-      await vibrate("ALL");
-    }
-    if (weight == 'HIGH') {
-      await ttsService.speak("مهلا");
-      await writeToBraille("مهلا");
-      final caption = await VQA().caption(image);
-      if (caption != null) {
-        await ttsService.speak(caption);
-        await writeToBraille(caption);
-      } else {
-        await ttsService.speak(yolo.labelsToArabic[label]!);
-        await writeToBraille(yolo.labelsToArabic[label]!);
-      }
-    } else if (weight == 'MEDIUM') {
-      await HapticFeedback.mediumImpact();
-      if (confidence > 0.7) {
-        await ttsService.speak(yolo.labelsToArabic[label]!);
-        await writeToBraille(yolo.labelsToArabic[label]!);
-      }
-    }
+    final iPChangeSubscribtion = ipChar.onValueReceived.listen((value) async {
+      final data = utf8.decode(value);
+      printDebug(data);
+      connectedIp = data.split(" ")[0];
+    });
+    device.cancelWhenDisconnected(iPChangeSubscribtion);
+    await ipChar.setNotifyValue(true);
+
+    var wifiList = [""];
+
+    final wifiListSubscription = wifiChar.onValueReceived.listen((value) async {
+      final data = utf8.decode(value);
+      printDebug(data);
+      setState(() {
+        wifiList = data.split(',').toSet().toList();
+      });
+    });
+    device.cancelWhenDisconnected(wifiListSubscription);
+    await wifiChar.setNotifyValue(true);
+
+    try {
+      await wifiChar.write(utf8.encode('list'));
+    } catch (e) {}
+
+    TextEditingController password = TextEditingController();
+    String? selectedSSID;
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(
+                'اختر إحدى الشبكات للإرتباط',
+                style: GoogleFonts.changa(),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButton(
+                    hint: Text('اختر معرّف الشبكة'),
+                    value: selectedSSID,
+                    onChanged: (newValue) {
+                      setState(() {
+                        selectedSSID = newValue as String?;
+                      });
+                    },
+                    items: wifiList.isNotEmpty
+                        ? wifiList.map((ssid) {
+                            return DropdownMenuItem(
+                              value: ssid,
+                              child: Text(ssid),
+                            );
+                          }).toList()
+                        : [DropdownMenuItem(child: Text('No Networks Found'))],
+                  ),
+                  SizedBox(height: 10),
+                  TextField(
+                    controller: password,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15.0),
+                      ),
+                      labelText: 'كلمة المرور',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    setState(() {
+                      wifiList = ["Refreshing..."];
+                    });
+                    await wifiChar.write(utf8.encode('list'));
+                  },
+                  child: Text('تحديث الشبكات'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await wifiChar
+                          .write(utf8.encode('$selectedSSID,${password.text}'));
+                    } catch (e) {}
+                    setState(() {
+                      isRasberryConnected = true;
+                    });
+                    _txRxDevice = txrxChar;
+                    wifiListSubscription.cancel();
+                    final subscription =
+                        txrxChar.onValueReceived.listen((value) async {
+                      final data = utf8.decode(value);
+                      printDebug(data);
+                      await HapticFeedback.vibrate();
+                      await writeToBraille(data);
+                      await ttsService.speak(data);
+                    });
+                    device.cancelWhenDisconnected(subscription);
+                    await txrxChar.setNotifyValue(true);
+                    Navigator.of(context).pop();
+                  },
+                  child: isRasberryConnected ? CircularProgressIndicator() : Text('حفظ الإعداد') ,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   static Future<void> writeToBraille(String caption) async {
@@ -642,122 +662,6 @@ class _MyHomePageState extends State<MyHomePage> {
         printDebug("Characteristic is null.");
       }
     }
-  }
-
-  /// Analyzes detected objects and determines the object with the maximum weight.
-  ///
-  /// This function processes a list of detected objects, each represented as a map
-  /// containing information such as class name and bounding box. It calculates
-  /// the movement and direction of each object based on its bounding box and
-  /// compares it to previous frame data. The weight of each object is measured
-  /// using the `measureWeight` method of `PriorityItem`. The object with the
-  /// highest weight ('HIGH' > 'MEDIUM' > 'LOW') is identified, and if multiple
-  /// objects have the same weight, the first one is selected.
-  ///
-  /// - Parameters:
-  ///   - detectedObjects: A list of maps, where each map contains details about
-  ///     a detected object, including its class name and bounding box.
-  ///
-  /// - Returns: The `PriorityItem` object with the highest weight among the
-  ///   detected objects, or null if no objects are detected.
-  priority_manager.PriorityItem? _weightOfObjects(
-      List<Map<String, dynamic>> detectedObjects, img.Image image) {
-    var maxWeight = 'LOW'; // Variable to track the maximum weight found
-    priority_manager.PriorityItem?
-        maxObject; // Variable to store the object with the highest weight
-
-    // Iterate over each detected object to determine movement and weight
-    for (var objectData in detectedObjects) {
-      String label =
-          objectData['className']; // Get the label of the detected object
-
-      // Create a PriorityItem for the current object
-      priority_manager.PriorityItem item = priority_manager.PriorityItem(
-          label: label,
-          isPersonMoving: isPersonMoving,
-          isObjectMoving: false,
-          weight: 1.0,
-          direction: '',
-          frame: image);
-      if (item.ttsServiceNotInitialized()) {
-        item.initTTS();
-      }
-      Map<String, dynamic>? previousObject;
-      // ignore: unnecessary_null_comparison
-      if (previousObjects != null &&
-          previousObjects.isNotEmpty &&
-          previousObjects.length > 1 &&
-          // ignore: unnecessary_null_comparison
-          label != null) {
-        previousObject = previousObjects
-            .firstWhere((element) => element?['className'] == label);
-      }
-
-      // is object moving - check if the object is moving based on its bounding box
-      if (objectData['boundingBox'] != null &&
-          previousObjects.isNotEmpty &&
-          previousObject != null) {
-        item.isObjectMoving =
-            _isObjectMoving(objectData['boundingBox'], previousObject);
-      }
-
-      if (item.isObjectMoving && previousObject != null) {
-        item.direction =
-            _getDirection(objectData['boundingBox'], previousObject);
-      }
-
-      // Measure the weight of the current object
-      var itemWeight = item.measureWeight();
-      // Update maxWeight and maxObject based on itemWeight
-      if (itemWeight == 'HIGH' ||
-          (itemWeight == 'MEDIUM' && maxWeight != 'HIGH') ||
-          (itemWeight == 'LOW' && maxWeight == 'LOW')) {
-        maxWeight = itemWeight;
-        maxObject = item;
-      }
-    }
-
-    previousObjects = detectedObjects;
-
-    return maxObject; // Return the object with the highest weight
-  }
-
-  Future<List<Map<String, dynamic>>> _runObjectDetectionInBackground(
-      img.Image image) async {
-    final detectedObjects = yolo.runObjectDetection({
-      'image': image,
-      'labels': labels,
-      'height': image.height,
-      'width': image.width,
-      'interpreter': _interpreter
-    });
-    return detectedObjects;
-  }
-
-  bool _compareImages(Nv21Image lastFrame, Nv21Image currentFrame) {
-    // Check if dimensions are the same
-    if (lastFrame.width != currentFrame.width ||
-        lastFrame.height != currentFrame.height) {
-      return false; // Different dimensions mean images are not the same
-    }
-
-    // Compare pixel data
-    final lastPixels = lastFrame.bytes;
-    final currentPixels = currentFrame.bytes;
-    if (lastPixels.length != currentPixels.length) {
-      return false; // Different data size means images are not the same
-    }
-
-    int differenceCount = 0;
-    for (int i = 0; i < lastPixels.length; i += 4) {
-      final int rDiff = (lastPixels[i] - currentPixels[i]).abs();
-      final int gDiff = (lastPixels[i + 1] - currentPixels[i + 1]).abs();
-      final int bDiff = (lastPixels[i + 2] - currentPixels[i + 2]).abs();
-      if (rDiff > 10 || gDiff > 10 || bDiff > 10) {
-        differenceCount++;
-      }
-    }
-    return ((differenceCount - 0) / 320000) < 0.73;
   }
 
   Future<void> _askQuestion() async {
@@ -875,23 +779,42 @@ class _MyHomePageState extends State<MyHomePage> {
         await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
         isListeningToPlaceForTaxi = true;
       } else if (maxClassify.key == 'maps' ||
-          bestClassification['maps']! >= 0.3) {
+          bestClassification['maps']! >= 0.4) {
         await ttsService.speak("إلى أين تريد الذهاب؟");
         await writeToBraille("إلى أين تريد الذهاب؟");
         printDebug("listening to place...");
         isListeningToPlace = true;
       } else if (maxClassify.key == 'ocr' && maxClassify.value > 0.6) {
-        if (_currentImg == null) {
+        if (!isRasberryConnected) {
           await ttsService.speak("يجب فتح الكَمِرا");
           await writeToBraille("يجب فتح الكَمِرا");
         } else {
-          final extracted =
-              await Ocr.performOcrVQA(yolo.fromJpegToImg(_currentImg!));
-          await ttsService.speak(extracted ?? "لم أستطع تحديد النص");
-          await writeToBraille(extracted ?? "لم أستطع تحديد النص");
+          await _txRxDevice?.write(utf8.encode(
+              """ocr,Analyze the text from the provided image and summarize the main ideas clearly and concisely as a paragraph. Return only the summary without additional comments or explanations."""));
+          await Future.delayed(const Duration(seconds: 5), () async {
+            final response =
+                await http.get(Uri.parse("http://$connectedIp:8080/"));
+            printDebug(response.body);
+            final decodedJson = jsonDecode(response.body);
+            final documents = await Ocr.getConfigFileJSON();
+            final uuid = Uuid().v1();
+            final file = File(
+                '${(await getApplicationDocumentsDirectory()).path}/$uuid.jpg');
+            file.writeAsBytes(base64Decode(decodedJson['document']));
+            if (documents is List) {
+              documents.add({
+                'title': decodedJson['title'],
+                'summary': decodedJson['summary'],
+                'image_path': file.path,
+              });
+              await File(
+                      '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
+                  .writeAsString(jsonEncode(documents));
+            }
+          });
         }
       } else {
-        if (_currentImg == null) {
+        if (!isRasberryConnected) {
           await ttsService.speak("يجب فتح الكَمِرا");
           await writeToBraille("يجب فتح الكَمِرا");
         } else {
@@ -904,13 +827,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
           final location = await placemarkFromCoordinates(
               origin?.latitude ?? 0, origin?.longitude ?? 0);
-          final answer = await VQA().ask(
-              """Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that 
+          await _txRxDevice?.write(utf8.encode(
+            """question,Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that
               ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
               ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
-              yolo.fromJpegToImg(_currentImg!));
-          await ttsService.speak(answer as String);
-          await writeToBraille(answer as String);
+          ));
         }
       }
     });
@@ -945,7 +866,8 @@ class _MyHomePageState extends State<MyHomePage> {
             for (var char in services) {
               printDebug("SCANNING IN SERVICE #$i");
               for (var prop in char.characteristics) {
-                if (prop.characteristicUuid.str == 'beb5483e-36e1-4688-b7f5-ea07361b26a1') {
+                if (prop.characteristicUuid.str ==
+                    'beb5483e-36e1-4688-b7f5-ea07361b26a1') {
                   printDebug(
                       "Found=================== ${prop.characteristicUuid}");
                   au["connectedCharacteristic"] = prop;
@@ -971,6 +893,111 @@ class _MyHomePageState extends State<MyHomePage> {
     } catch (e) {
       printDebug("Error: $e");
     }
+  }
+
+  Future<Map<String, dynamic>> _connectToRPi5() async {
+    BluetoothCharacteristic? wifi;
+    BluetoothCharacteristic? txrx;
+    BluetoothCharacteristic? ip;
+    BluetoothDevice? device;
+
+    try {
+      // Initial quick scan
+      await FlutterBluePlus.startScan(
+          timeout: const Duration(milliseconds: 100));
+      await FlutterBluePlus.stopScan();
+
+      // Main scan
+      await FlutterBluePlus.startScan(
+        timeout: const Duration(seconds: 5),
+        oneByOne: true,
+      );
+
+      final scanResults = await _waitForScanResults();
+
+      for (ScanResult result in scanResults) {
+        printDebug(
+          'Found device: ${result.device.platformName}, ID: ${result.device.remoteId}',
+        );
+
+        if (result.device.platformName.toUpperCase() == "RPI5-BLE-SERVER") {
+          await FlutterBluePlus.stopScan();
+          printDebug("Connecting to ${result.device.advName}...");
+
+          await result.device.connect();
+          printDebug("Connected!");
+          device = result.device;
+
+          final services = await result.device.discoverServices();
+          final characteristics = await _findCharacteristics(services);
+
+          wifi = characteristics['wifi'];
+          txrx = characteristics['txrx'];
+          ip = characteristics['ip'];
+
+          if (wifi != null && txrx != null && ip != null) {
+            break;
+          }
+        }
+      }
+
+      return {
+        'wifi': wifi,
+        'txrx': txrx,
+        'ip': ip,
+        'device': device,
+      };
+    } catch (e) {
+      printDebug("Error: $e");
+      return {
+        'wifi': null,
+        'txrx': null,
+        'ip': null,
+        'device': null,
+      };
+    }
+  }
+
+// Helper function to wait for scan results
+  Future<List<ScanResult>> _waitForScanResults() {
+    return Future.delayed(
+      const Duration(seconds: 5),
+      () => FlutterBluePlus.scanResults.first,
+    );
+  }
+
+// Helper function to find characteristics
+  Future<Map<String, BluetoothCharacteristic?>> _findCharacteristics(
+    List<BluetoothService> services,
+  ) async {
+    BluetoothCharacteristic? wifi;
+    BluetoothCharacteristic? txrx;
+    BluetoothCharacteristic? ip;
+
+    for (var service in services) {
+      for (var characteristic in service.characteristics) {
+        switch (characteristic.characteristicUuid.str) {
+          case 'ff4b4830-efb2-4eac-8b70-32cd4d7c0996':
+            wifi = characteristic;
+            printDebug("Connected wifi char...");
+            break;
+          case '5c8be1d7-a6d8-4590-9370-b1380de38fb5':
+            txrx = characteristic;
+            printDebug("Connected txrx char...");
+            break;
+          case '792af15e-ffce-46cc-b98d-e85e6c66dbf3':
+            ip = characteristic;
+            printDebug("Connected ip char...");
+            break;
+        }
+      }
+    }
+
+    return {
+      'wifi': wifi,
+      'txrx': txrx,
+      'ip': ip,
+    };
   }
 
   void _disconnectFromAU(Map<String, Object?> au) async {
