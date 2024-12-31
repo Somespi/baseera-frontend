@@ -608,13 +608,17 @@ class _MyHomePageState extends State<MyHomePage> {
                       printDebug(data);
                       await HapticFeedback.vibrate();
                       await writeToBraille(data);
-                      await ttsService.speak(data);
+                      Future.delayed(Duration(milliseconds: 100), () async {
+                        await ttsService.speak(data);
+                      });
                     });
                     device.cancelWhenDisconnected(subscription);
                     await txrxChar.setNotifyValue(true);
                     Navigator.of(context).pop();
                   },
-                  child: isRasberryConnected ? CircularProgressIndicator() : Text('حفظ الإعداد') ,
+                  child: isRasberryConnected
+                      ? CircularProgressIndicator()
+                      : Text('حفظ الإعداد'),
                 ),
               ],
             );
