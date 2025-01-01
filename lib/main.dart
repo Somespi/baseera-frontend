@@ -11,7 +11,6 @@ import 'package:basera/services/maps.dart';
 import 'package:basera/services/ocr/ocr.dart';
 import 'package:basera/services/speech_to_text.dart';
 import 'package:basera/services/uber_service.dart';
-import 'package:basera/services/vqa.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -25,7 +24,6 @@ import 'package:sensors_plus/sensors_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
 import 'services/help_utilities.dart';
-import 'services/priority_manager.dart' as priority_manager;
 import 'services/text_to_speech.dart';
 
 import 'package:http/http.dart' as http;
@@ -644,7 +642,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  static Future<void> vibrate(String direction) async {
+  static Future<void> _vibrate(String direction) async {
     if ((assistiveUnits[1]['isConnected'] as bool)) {
       BluetoothCharacteristic? characteristic = assistiveUnits[1]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
@@ -1065,27 +1063,4 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  bool _isObjectMoving(Map<String, dynamic>? objectData,
-      Map<String, dynamic>? previousObjectData) {
-    if (objectData == null || previousObjectData == null) return false;
-    const threshold = 10;
-
-    final dx = (objectData['x'] - previousObjectData['x']).abs();
-    final dy = (objectData['y'] - previousObjectData['y']).abs();
-    return dx > threshold || dy > threshold;
-  }
-
-  String _getDirection(objectData, Map<String, dynamic>? previousObjectData) {
-    if (objectData == null || previousObjectData == null) return '';
-    final dx = objectData['x'] - previousObjectData['x'];
-    final dy = objectData['y'] - previousObjectData['y'];
-    int threshold = 10;
-    // Check if the object has moved in any direction (left, right, front, back)
-    if (dx.abs() > threshold) {
-      return dx > 0 ? 'right' : 'left';
-    } else if (dy.abs() > threshold) {
-      return dy > 0 ? 'front' : 'back';
-    }
-    return '';
-  }
 }
