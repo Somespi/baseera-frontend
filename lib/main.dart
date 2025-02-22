@@ -45,7 +45,7 @@ bool isConfirmingTaxiForOuterPlace = false;
 
 String lastSentData = "";
 bool isRasberryConnected = false;
-
+bool isRasberryPaused = false;
 String connectedIp = "";
 
 const routes = <Widget?>[
@@ -338,7 +338,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ? isScanning
                       ? const CircularProgressIndicator()
                       : const Icon(Icons.camera)
-                  : const Icon(Icons.stop_circle_outlined)),
+                  : isRasberryPaused ? const Icon(Icons.play_arrow_rounded) : const Icon(Icons.stop_circle_outlined)),
         ],
       ),
       body: Padding(
@@ -678,6 +678,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         txrxChar.onValueReceived.listen((value) async {
                       final data = utf8.decode(value);
                       printDebug(data);
+                      if (isRasberryPaused) return; 
+
                       await HapticFeedback.vibrate();
                       Future.delayed(Duration(milliseconds: 100), () async {
                         await ttsService.speak(data);
