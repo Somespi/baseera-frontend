@@ -141,6 +141,7 @@ Uint8List encodeAsPng(Uint8List rawData, int width, int height) {
 class _MyHomePageState extends State<MyHomePage> {
   bool _isLoading = false;
   bool isPersonMoving = false;
+  bool isElementMovingEnabled = true;
   StreamSubscription? _gyroscopeSubscription;
   bool isUsingCamera = false;
 
@@ -344,8 +345,25 @@ class _MyHomePageState extends State<MyHomePage> {
             ? routes[_selectedIndex]!
             : Column(
                 children: [
-                  InkWell(
+                  SizedBox(
+                    width: double.infinity,
+                    height:  isPersonMoving && !isElementMovingEnabled ? 400.0 : 150.0,
+                    child: InkWell(
                     borderRadius: BorderRadius.circular(15.0),
+                    onLongPress: () => setState(() {
+                      isElementMovingEnabled = !isElementMovingEnabled;
+                      fluttertoast.Fluttertoast.showToast(
+                          msg: !isElementMovingEnabled
+                              ? "تم تفعيل الحركة"
+                              : "تم إيقاف الحركة",
+                          toastLength: fluttertoast.Toast.LENGTH_SHORT,
+                          gravity: fluttertoast.ToastGravity.BOTTOM_LEFT,
+                          timeInSecForIosWeb: 1,
+                          backgroundColor: Colors.green,
+                          textColor: Colors.white,
+                          fontSize: 16.0
+                      );
+                    }),
                     onTap: () async {
                       await _askQuestion();
                       //await speechToTextService.stopListening();
@@ -385,6 +403,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                             ])),
                       ),
+                    ),
                     ),
                   ),
                   const SizedBox(height: 30.0),
