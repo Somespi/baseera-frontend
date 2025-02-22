@@ -26,6 +26,7 @@ import 'services/help_utilities.dart';
 import 'services/text_to_speech.dart';
 import 'services/ble_service.dart';
 
+import 'package:fluttertoast/fluttertoast.dart' as fluttertoast;
 import 'package:http/http.dart' as http;
 
 late List<String> labels;
@@ -328,7 +329,7 @@ class _MyHomePageState extends State<MyHomePage> {
               heroTag: "camera",
               onPressed: () async {
                 printDebug("Detecting press...");
-                readFromBLEStream();
+                await readFromBLEStream();
               },
               child: !isRasberryConnected
                   ? isScanning
@@ -425,10 +426,29 @@ class _MyHomePageState extends State<MyHomePage> {
                                 ElevatedButton(
                                   onPressed: () async {
                                     if (au['isConnected'] as bool) {
-                                      disconnectFromAssistiveDevice(
+                                      await disconnectFromAssistiveDevice(
                                           au, context);
+                                        await fluttertoast.Fluttertoast.showToast(
+                                            msg: "تم الإنفصال بنجاح",
+                                            toastLength: fluttertoast.Toast.LENGTH_SHORT,
+                                            gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+                                            timeInSecForIosWeb: 1,
+                                            backgroundColor: Colors.green,
+                                            textColor: Colors.white,
+                                            fontSize: 16.0
+                                        );
                                     } else {
-                                      connectToAssistiveDevice(au, context);
+
+                                      await connectToAssistiveDevice(au, context);
+                                      fluttertoast.Fluttertoast.showToast(
+                                          msg: "تم الإقتران بنجاح",
+                                          toastLength: fluttertoast.Toast.LENGTH_SHORT,
+                                          gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+                                          timeInSecForIosWeb: 1,
+                                          backgroundColor: Colors.green,
+                                          textColor: Colors.white,
+                                          fontSize: 16.0
+                                      );
                                     }
                                   },
                                   style: ElevatedButton.styleFrom(
@@ -502,6 +522,15 @@ class _MyHomePageState extends State<MyHomePage> {
     final bleConnection = await connectToRPi5(context);
     if (bleConnection['device'] == null) {
       isScanning = false;
+      fluttertoast.Fluttertoast.showToast(
+          msg: "لم يتم العثور على الجهاز",
+          toastLength: fluttertoast.Toast.LENGTH_SHORT,
+          gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0
+      );
       return;
     }
 
@@ -611,6 +640,15 @@ class _MyHomePageState extends State<MyHomePage> {
                     });
                     device.cancelWhenDisconnected(subscription);
                     await txrxChar.setNotifyValue(true);
+                    fluttertoast.Fluttertoast.showToast(
+                        msg: "تم الإقتران بنجاح",
+                        toastLength: fluttertoast.Toast.LENGTH_SHORT,
+                        gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+                        timeInSecForIosWeb: 1,
+                        backgroundColor: Colors.green,
+                        textColor: Colors.white,
+                        fontSize: 16.0
+                    );
                     Navigator.of(context).pop();
                   },
                   child: isRasberryConnected

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:basera/services/help_utilities.dart';
 
@@ -10,7 +11,16 @@ Future<List<ScanResult>> performScan() async {
     await FlutterBluePlus.stopScan();
     return await FlutterBluePlus.scanResults.first;
   } catch (e) {
-    printDebug("Error during scan: $e");
+    printDebug("Error: $e");
+    Fluttertoast.showToast( 
+      msg: "حدث خطأ أثناء البحث",
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM_RIGHT,
+      timeInSecForIosWeb: 1,
+      backgroundColor: Colors.grey,
+      textColor: Colors.white,
+      fontSize: 16.0
+    );
     return [];
   }
 }
@@ -94,15 +104,39 @@ Future<Map<String, BluetoothCharacteristic?>> findCharacteristics(
       switch (characteristic.characteristicUuid.str) {
         case 'ff4b4830-efb2-4eac-8b70-32cd4d7c0996':
           wifi = characteristic;
-          printDebug("Connected wifi char...");
+          Fluttertoast.showToast( 
+            msg: "تم الاتصال بخاصية الواي فاي",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM_RIGHT,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.grey,
+            textColor: Colors.white,
+            fontSize: 16.0
+          );
           break;
         case '5c8be1d7-a6d8-4590-9370-b1380de38fb5':
           txrx = characteristic;
-          printDebug("Connected txrx char...");
+          Fluttertoast.showToast( 
+            msg: "تم الاتصال بخاصية البيانات",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM_RIGHT,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.grey,
+            textColor: Colors.white,
+            fontSize: 16.0
+          );
           break;
         case '792af15e-ffce-46cc-b98d-e85e6c66dbf3':
           ip = characteristic;
-          printDebug("Connected ip char...");
+          Fluttertoast.showToast( 
+            msg: "تم الاتصال بخاصية الآي بي",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.BOTTOM_RIGHT,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.grey,
+            textColor: Colors.white,
+            fontSize: 16.0
+          );
           break;
       }
     }
@@ -163,13 +197,31 @@ Future<void> disconnectFromAssistiveDevice(
       au["connectedService"] = null;
       au["connectedCharacteristic"] = null;
 
-      printDebug("Resources cleared.");
+      
       (context as Element).markNeedsBuild();
     } catch (e) {
       printDebug("Error during disconnection: $e");
+      Fluttertoast.showToast( 
+        msg: "حدث خطأ أثناء الفصل",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM_RIGHT,
+        timeInSecForIosWeb: 1,
+        backgroundColor: Colors.grey,
+        textColor: Colors.white,
+        fontSize: 16.0
+      );
     }
   } else {
     printDebug("No device connected.");
+    Fluttertoast.showToast( 
+      msg: "لا يوجد جهاز متصل",
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM_RIGHT,
+      timeInSecForIosWeb: 1,
+      backgroundColor: Colors.grey,
+      textColor: Colors.white,
+      fontSize: 16.0
+    );
   }
 }
 
