@@ -66,6 +66,7 @@ var assistiveUnits = [
     "connectedDevice": null,
     "connectedCharacteristic": null,
     "connectedService": null,
+    "isPaused": false,
     "isConnected": false,
     "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
     "image": "assets/icons/braille.png",
@@ -77,6 +78,7 @@ var assistiveUnits = [
     "deviceName": "24:D7:EB:0F:09:02",
     "connectedDevice": null,
     "connectedCharacteristic": null,
+    "isPaused": false,
     "connectedService": null,
     "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
     "isConnected": false,
@@ -347,63 +349,65 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    height:  isPersonMoving && !isElementMovingEnabled ? 400.0 : 150.0,
+                    height: isPersonMoving && !isElementMovingEnabled
+                        ? 400.0
+                        : 150.0,
                     child: InkWell(
-                    borderRadius: BorderRadius.circular(15.0),
-                    onLongPress: () => setState(() {
-                      isElementMovingEnabled = !isElementMovingEnabled;
-                      fluttertoast.Fluttertoast.showToast(
-                          msg: !isElementMovingEnabled
-                              ? "تم تفعيل الحركة"
-                              : "تم إيقاف الحركة",
-                          toastLength: fluttertoast.Toast.LENGTH_SHORT,
-                          gravity: fluttertoast.ToastGravity.BOTTOM_LEFT,
-                          timeInSecForIosWeb: 1,
-                          backgroundColor: Colors.green,
-                          textColor: Colors.white,
-                          fontSize: 16.0
-                      );
-                    }),
-                    onTap: () async {
-                      await _askQuestion();
-                      //await speechToTextService.stopListening();
-                    },
-                    child: Card(
-                      color: Color.fromRGBO(236, 246, 255, 1),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15.0),
-                        side: BorderSide(
-                          color: _isAsking
-                              ? Color.fromRGBO(0, 168, 129, 1)
-                              : Color.fromRGBO(0, 76, 168, 1),
-                          width: _isAsking ? 2.0 : 0.7,
+                      borderRadius: BorderRadius.circular(15.0),
+                      onLongPress: () => setState(() {
+                        isElementMovingEnabled = !isElementMovingEnabled;
+                        fluttertoast.Fluttertoast.showToast(
+                            msg: !isElementMovingEnabled
+                                ? "تم تفعيل الحركة"
+                                : "تم إيقاف الحركة",
+                            toastLength: fluttertoast.Toast.LENGTH_SHORT,
+                            gravity: fluttertoast.ToastGravity.BOTTOM_LEFT,
+                            timeInSecForIosWeb: 1,
+                            backgroundColor: Colors.green,
+                            textColor: Colors.white,
+                            fontSize: 16.0);
+                      }),
+                      onTap: () async {
+                        await _askQuestion();
+                        //await speechToTextService.stopListening();
+                      },
+                      child: Card(
+                        color: Color.fromRGBO(236, 246, 255, 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15.0),
+                          side: BorderSide(
+                            color: _isAsking
+                                ? Color.fromRGBO(0, 168, 129, 1)
+                                : Color.fromRGBO(0, 76, 168, 1),
+                            width: _isAsking ? 2.0 : 0.7,
+                          ),
                         ),
-                      ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Flex(direction: Axis.horizontal, children: [
-                              Image(
-                                image: AssetImage('assets/icons/eye.png'),
-                                width: 100.0,
-                                height: 100.0,
-                              ),
-                              //const Spacer(),
-                              Center(
-                                child: Text(
-                                  "استفسر عن ما يحيطك",
-                                  style: GoogleFonts.rubik(
-                                    textStyle: const TextStyle(
-                                      color: Colors.black,
-                                      fontSize: 20,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child:
+                                  Flex(direction: Axis.horizontal, children: [
+                                Image(
+                                  image: AssetImage('assets/icons/eye.png'),
+                                  width: 100.0,
+                                  height: 100.0,
+                                ),
+                                //const Spacer(),
+                                Center(
+                                  child: Text(
+                                    "استفسر عن ما يحيطك",
+                                    style: GoogleFonts.rubik(
+                                      textStyle: const TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 20,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ])),
+                              ])),
+                        ),
                       ),
-                    ),
                     ),
                   ),
                   const SizedBox(height: 30.0),
@@ -442,53 +446,86 @@ class _MyHomePageState extends State<MyHomePage> {
                                   width: 100.0,
                                 ),
                                 //const SizedBox(height: 5.0),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    if (au['isConnected'] as bool) {
-                                      await disconnectFromAssistiveDevice(
-                                          au, context);
-                                        await fluttertoast.Fluttertoast.showToast(
-                                            msg: "تم الإنفصال بنجاح",
-                                            toastLength: fluttertoast.Toast.LENGTH_SHORT,
-                                            gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+                                Row(children: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      if (au['isConnected'] as bool) {
+                                        await disconnectFromAssistiveDevice(
+                                            au, context);
+                                        await fluttertoast.Fluttertoast
+                                            .showToast(
+                                                msg: "تم الإنفصال بنجاح",
+                                                toastLength: fluttertoast
+                                                    .Toast.LENGTH_SHORT,
+                                                gravity: fluttertoast
+                                                    .ToastGravity.BOTTOM_RIGHT,
+                                                timeInSecForIosWeb: 1,
+                                                backgroundColor: Colors.green,
+                                                textColor: Colors.white,
+                                                fontSize: 16.0);
+                                      } else {
+                                        await connectToAssistiveDevice(
+                                            au, context);
+                                        fluttertoast.Fluttertoast.showToast(
+                                            msg: "تم الإقتران بنجاح",
+                                            toastLength:
+                                                fluttertoast.Toast.LENGTH_SHORT,
+                                            gravity: fluttertoast
+                                                .ToastGravity.BOTTOM_RIGHT,
                                             timeInSecForIosWeb: 1,
                                             backgroundColor: Colors.green,
                                             textColor: Colors.white,
-                                            fontSize: 16.0
-                                        );
-                                    } else {
+                                            fontSize: 16.0);
+                                      }
+                                    },
 
-                                      await connectToAssistiveDevice(au, context);
-                                      fluttertoast.Fluttertoast.showToast(
-                                          msg: "تم الإقتران بنجاح",
-                                          toastLength: fluttertoast.Toast.LENGTH_SHORT,
-                                          gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
-                                          timeInSecForIosWeb: 1,
-                                          backgroundColor: Colors.green,
-                                          textColor: Colors.white,
-                                          fontSize: 16.0
-                                      );
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        !(au['isConnected'] as bool)
-                                            ? Colors.blue[500]
-                                            : Colors.red[500],
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8.0),
+                                    //fixedSize: const Size(100, 30),
+
+                                    child: Text(
+                                      !(au['isConnected'] as bool)
+                                          ? "اقتران"
+                                          : "انفصال",
+                                      style: GoogleFonts.rubik(
+                                          textStyle: TextStyle(
+                                        fontSize: 16,
+                                      )),
                                     ),
-                                    fixedSize: const Size(100, 30),
                                   ),
-                                  child: Text(
-                                    !(au['isConnected'] as bool)
-                                        ? "اقتران"
-                                        : "انفصال",
-                                    style: GoogleFonts.rubik(
-                                        textStyle: TextStyle(
-                                            fontSize: 16, color: Colors.white)),
+                                  TextButton(
+                                    onPressed: (au['isConnected'] as bool)
+                                        ? () async {
+                                            au['isPaused'] =
+                                                !(au['isPaused'] as bool);
+                                            await fluttertoast.Fluttertoast
+                                                .showToast(
+                                                    msg: (au[
+                                                            'isPaused'] as bool)
+                                                        ? "تم ايقاف التشغيل"
+                                                        : "تم استئناف التشغيل",
+                                                    toastLength: fluttertoast
+                                                        .Toast.LENGTH_SHORT,
+                                                    gravity: fluttertoast
+                                                        .ToastGravity
+                                                        .BOTTOM_RIGHT,
+                                                    timeInSecForIosWeb: 1,
+                                                    backgroundColor:
+                                                        Colors.green,
+                                                    textColor: Colors.white,
+                                                    fontSize: 16.0);
+                                          stopDevice(au);
+                                          }
+                                        : null,
+                                    child: Text(
+                                      au['isPaused'] as bool
+                                          ? "استئناف"
+                                          : "إيقاف",
+                                      style: GoogleFonts.rubik(
+                                          textStyle: TextStyle(
+                                        fontSize: 16,
+                                      )),
+                                    ),
                                   ),
-                                ),
+                                ]),
                               ],
                             ),
                           ),
@@ -548,8 +585,7 @@ class _MyHomePageState extends State<MyHomePage> {
           timeInSecForIosWeb: 1,
           backgroundColor: Colors.red,
           textColor: Colors.white,
-          fontSize: 16.0
-      );
+          fontSize: 16.0);
       return;
     }
 
@@ -666,8 +702,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         timeInSecForIosWeb: 1,
                         backgroundColor: Colors.green,
                         textColor: Colors.white,
-                        fontSize: 16.0
-                    );
+                        fontSize: 16.0);
                     Navigator.of(context).pop();
                   },
                   child: isRasberryConnected
@@ -683,7 +718,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   static Future<void> writeToBraille(String caption) async {
-    if ((assistiveUnits[0]['isConnected'] as bool)) {
+    if ((assistiveUnits[0]['isConnected'] as bool) && (assistiveUnits[0]
+        ['isPaused'] as bool) == false) {
       BluetoothCharacteristic? characteristic = assistiveUnits[0]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
@@ -700,7 +736,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // ignore: unused_element
   static Future<void> _vibrate(String direction) async {
-    if ((assistiveUnits[1]['isConnected'] as bool)) {
+    if ((assistiveUnits[1]['isConnected'] as bool) && (assistiveUnits[1]
+        ['isPaused'] as bool) == false) {
       BluetoothCharacteristic? characteristic = assistiveUnits[1]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
@@ -930,6 +967,37 @@ class _MyHomePageState extends State<MyHomePage> {
       directionsSegments = null;
       isDirectionServiceRunning = false;
       lastDirectedStep = -1;
+    }
+  }
+  
+  stopDevice(Map<String, Object?> au) {
+    if (au['name'] == "خلية برايل") {
+      BluetoothCharacteristic? characteristic = au['connectedCharacteristic'] as BluetoothCharacteristic?;
+      if (characteristic != null) {
+        try {
+          characteristic.write(utf8.encode(" "));
+        } catch (e) {
+          printDebug("ERROR!");
+          fluttertoast.Fluttertoast.showToast(
+              msg: "حدث خطأ أثناء إيقاف الجهاز",
+              toastLength: fluttertoast.Toast.LENGTH_SHORT,
+              gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+              timeInSecForIosWeb: 1,
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              fontSize: 16.0);
+        }
+      } else {
+        printDebug("Characteristic is null.");
+        fluttertoast.Fluttertoast.showToast(
+            msg: "حدث خطأ أثناء إيقاف الجهاز",
+            toastLength: fluttertoast.Toast.LENGTH_SHORT,
+            gravity: fluttertoast.ToastGravity.BOTTOM_RIGHT,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0);
+      }
     }
   }
 }
