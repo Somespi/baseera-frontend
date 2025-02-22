@@ -24,6 +24,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
 import 'services/help_utilities.dart';
 import 'services/text_to_speech.dart';
+import 'services/ble_service.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -46,7 +47,11 @@ bool isRasberryConnected = false;
 
 String connectedIp = "";
 
-const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(),]; //ARroutePage()];
+const routes = <Widget?>[
+  null,
+  DocumentsPage(),
+  MapsRoutePage(),
+]; //ARroutePage()];
 const titles = <String>[
   "الصفحة الرئيسية",
   "المستندات",
@@ -284,10 +289,6 @@ class _MyHomePageState extends State<MyHomePage> {
             icon: Icon(Icons.location_pin),
             label: 'المواقع',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.crop_square_rounded),
-            label: 'الماسح الضوئي',
-          ),
         ],
         onDestinationSelected: (index) {
           setState(() {
@@ -424,9 +425,10 @@ class _MyHomePageState extends State<MyHomePage> {
                                 ElevatedButton(
                                   onPressed: () async {
                                     if (au['isConnected'] as bool) {
-                                      _disconnectFromAU(au);
+                                      disconnectFromAssistiveDevice(
+                                          au, context);
                                     } else {
-                                      _connectToAU(au);
+                                      connectToAssistiveDevice(au, context);
                                     }
                                   },
                                   style: ElevatedButton.styleFrom(
@@ -497,7 +499,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> readFromBLEStream() async {
     isScanning = true;
-    final bleConnection = await _connectToRPi5();
+    final bleConnection = await connectToRPi5(context);
     if (bleConnection['device'] == null) {
       isScanning = false;
       return;
@@ -602,10 +604,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       final data = utf8.decode(value);
                       printDebug(data);
                       await HapticFeedback.vibrate();
-                      await writeToBraille(data);
                       Future.delayed(Duration(milliseconds: 100), () async {
                         await ttsService.speak(data);
                       });
+                      await writeToBraille(data);
                     });
                     device.cancelWhenDisconnected(subscription);
                     await txrxChar.setNotifyValue(true);
@@ -639,6 +641,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // ignore: unused_element
   static Future<void> _vibrate(String direction) async {
     if ((assistiveUnits[1]['isConnected'] as bool)) {
       BluetoothCharacteristic? characteristic = assistiveUnits[1]
@@ -836,193 +839,6 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _connectToAU(Map<String, Object?> au) async {
-    var targetDeviceName = au["deviceName"] as String;
-
-    try {
-      printDebug("Scanning for devices...");
-      FlutterBluePlus.startScan(timeout: Duration(seconds: 5));
-
-      var subscription = FlutterBluePlus.scanResults.listen((results) async {
-        for (ScanResult result in results) {
-          printDebug(
-              'Found device: ${result.device.advName}, ID: ${result.device.remoteId}');
-          if (result.device.remoteId.str == targetDeviceName) {
-            await FlutterBluePlus.stopScan();
-            printDebug("Connecting to ${result.device.advName}...");
-
-            au["connectedDevice"] = result.device;
-            await (au["connectedDevice"] as BluetoothDevice?)!.connect();
-            printDebug("Connected!");
-
-            var services = await (au["connectedDevice"] as BluetoothDevice?)!
-                .discoverServices();
-
-            //for (var service in services) {
-            //printDebug('Service: ${service.uuid}, service: ${service.characteristics}');
-            //if (service.uuid.toString() == targetServiceUuid) {
-            int i = 1;
-            for (var char in services) {
-              printDebug("SCANNING IN SERVICE #$i");
-              for (var prop in char.characteristics) {
-                if (prop.characteristicUuid.str ==
-                    'beb5483e-36e1-4688-b7f5-ea07361b26a1') {
-                  printDebug(
-                      "Found=================== ${prop.characteristicUuid}");
-                  au["connectedCharacteristic"] = prop;
-                  au["connectedService"] = char;
-                  printDebug("Connected char...");
-                  setState(() {
-                    au["isConnected"] = true;
-                  });
-                  printDebug("Target characteristic saved!");
-                  break;
-                }
-              }
-              i++;
-            }
-          }
-          break;
-        }
-        //}
-      });
-
-      await Future.delayed(Duration(seconds: 5));
-      subscription.cancel();
-    } catch (e) {
-      printDebug("Error: $e");
-    }
-  }
-
-  Future<Map<String, dynamic>> _connectToRPi5() async {
-    BluetoothCharacteristic? wifi;
-    BluetoothCharacteristic? txrx;
-    BluetoothCharacteristic? ip;
-    BluetoothDevice? device;
-
-    try {
-      // Initial quick scan
-      await FlutterBluePlus.startScan(
-          timeout: const Duration(milliseconds: 100));
-      await FlutterBluePlus.stopScan();
-
-      // Main scan
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 5),
-        oneByOne: true,
-      );
-
-      final scanResults = await _waitForScanResults();
-
-      for (ScanResult result in scanResults) {
-        printDebug(
-          'Found device: ${result.device.platformName}, ID: ${result.device.remoteId}',
-        );
-
-        if (result.device.platformName.toUpperCase() == "RPI5-BLE-SERVER") {
-          await FlutterBluePlus.stopScan();
-          printDebug("Connecting to ${result.device.advName}...");
-
-          await result.device.connect();
-          printDebug("Connected!");
-          device = result.device;
-
-          final services = await result.device.discoverServices();
-          final characteristics = await _findCharacteristics(services);
-
-          wifi = characteristics['wifi'];
-          txrx = characteristics['txrx'];
-          ip = characteristics['ip'];
-
-          if (wifi != null && txrx != null && ip != null) {
-            break;
-          }
-        }
-      }
-
-      return {
-        'wifi': wifi,
-        'txrx': txrx,
-        'ip': ip,
-        'device': device,
-      };
-    } catch (e) {
-      printDebug("Error: $e");
-      return {
-        'wifi': null,
-        'txrx': null,
-        'ip': null,
-        'device': null,
-      };
-    }
-  }
-
-// Helper function to wait for scan results
-  Future<List<ScanResult>> _waitForScanResults() {
-    return Future.delayed(
-      const Duration(seconds: 5),
-      () => FlutterBluePlus.scanResults.first,
-    );
-  }
-
-// Helper function to find characteristics
-  Future<Map<String, BluetoothCharacteristic?>> _findCharacteristics(
-    List<BluetoothService> services,
-  ) async {
-    BluetoothCharacteristic? wifi;
-    BluetoothCharacteristic? txrx;
-    BluetoothCharacteristic? ip;
-
-    for (var service in services) {
-      for (var characteristic in service.characteristics) {
-        switch (characteristic.characteristicUuid.str) {
-          case 'ff4b4830-efb2-4eac-8b70-32cd4d7c0996':
-            wifi = characteristic;
-            printDebug("Connected wifi char...");
-            break;
-          case '5c8be1d7-a6d8-4590-9370-b1380de38fb5':
-            txrx = characteristic;
-            printDebug("Connected txrx char...");
-            break;
-          case '792af15e-ffce-46cc-b98d-e85e6c66dbf3':
-            ip = characteristic;
-            printDebug("Connected ip char...");
-            break;
-        }
-      }
-    }
-
-    return {
-      'wifi': wifi,
-      'txrx': txrx,
-      'ip': ip,
-    };
-  }
-
-  void _disconnectFromAU(Map<String, Object?> au) async {
-    if ((au["connectedDevice"] as BluetoothDevice?) != null) {
-      try {
-        printDebug(
-            "Disconnecting from ${(au["connectedDevice"] as BluetoothDevice?)!.advName}...");
-        await (au["connectedDevice"] as BluetoothDevice?)!.disconnect();
-        printDebug("Disconnected successfully!");
-
-        au["connectedDevice"] = null;
-        au["connectedService"] = null;
-        au["connectedCharacteristic"] = null;
-
-        printDebug("Resources cleared.");
-        setState(() {
-          au["isConnected"] = false;
-        });
-      } catch (e) {
-        printDebug("Error during disconnection: $e");
-      }
-    } else {
-      printDebug("No device connected.");
-    }
-  }
-
   Future<void> handleDirecting() async {
     Position? origin;
     await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
@@ -1059,5 +875,4 @@ class _MyHomePageState extends State<MyHomePage> {
       lastDirectedStep = -1;
     }
   }
-
 }
