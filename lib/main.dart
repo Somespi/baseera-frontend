@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:getwidget/getwidget.dart';
 
 //import 'package:basera/pages/ar_route.dart';
 import 'package:basera/pages/maps_route.dart';
@@ -115,7 +116,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
-        fontFamily: GoogleFonts.rubik().fontFamily,
+        fontFamily: GoogleFonts.cairo().fontFamily,
       ),
       home: Directionality(
         // add this
@@ -338,7 +339,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   ? isScanning
                       ? const CircularProgressIndicator()
                       : const Icon(Icons.camera)
-                  : isRasberryPaused ? const Icon(Icons.play_arrow_rounded) : const Icon(Icons.stop_circle_outlined)),
+                  : isRasberryPaused
+                      ? const Icon(Icons.play_arrow_rounded)
+                      : const Icon(Icons.stop_circle_outlined)),
         ],
       ),
       body: Padding(
@@ -372,7 +375,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         //await speechToTextService.stopListening();
                       },
                       child: Card(
-                        color: Color.fromRGBO(236, 246, 255, 1),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(15.0),
                           side: BorderSide(
@@ -397,11 +399,9 @@ class _MyHomePageState extends State<MyHomePage> {
                                 Center(
                                   child: Text(
                                     "استفسر عن ما يحيطك",
-                                    style: GoogleFonts.rubik(
-                                      textStyle: const TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 20,
-                                      ),
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 20,
                                     ),
                                   ),
                                 ),
@@ -414,155 +414,163 @@ class _MyHomePageState extends State<MyHomePage> {
                   Text("الوحدات المساعدة (AUs)",
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontFamily: 'Changa',
                         color: Color.fromARGB(255, 0, 0, 0),
-                        fontSize: 14,
+                        fontSize: 16,
+                        
                       )),
                   const SizedBox(height: 10.0),
                   Expanded(
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      children: assistiveUnits.map((au) {
-                        return Card(
-                          color: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15.0),
-                          ),
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  au['name'] as String,
-                                  style: GoogleFonts.rubik(
-                                    textStyle: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 20),
-                                  ),
-                                ),
-                                //const SizedBox(height: 8.0),
-                                Image(
-                                  image: AssetImage(au['image'] as String),
-                                  width: 100.0,
-                                ),
-                                //const SizedBox(height: 5.0),
-                                Row(children: [
-                                  TextButton(
-                                    onPressed: () async {
-                                      if (au['isConnected'] as bool) {
-                                        await disconnectFromAssistiveDevice(
-                                            au, context);
-                                        await fluttertoast.Fluttertoast
-                                            .showToast(
-                                                msg: "تم الإنفصال بنجاح",
-                                                toastLength: fluttertoast
-                                                    .Toast.LENGTH_SHORT,
-                                                gravity: fluttertoast
-                                                    .ToastGravity.BOTTOM_RIGHT,
-                                                timeInSecForIosWeb: 1,
-                                                backgroundColor: Colors.green,
-                                                textColor: Colors.white,
-                                                fontSize: 16.0);
-                                      } else {
-                                        await connectToAssistiveDevice(
-                                            au, context);
-                                        
-                                      }
-                                    },
-
-                                    //fixedSize: const Size(100, 30),
-
-                                    child: Text(
-                                      !(au['isConnected'] as bool)
-                                          ? "اقتران"
-                                          : "انفصال",
-                                      style: GoogleFonts.rubik(
-                                          textStyle: TextStyle(
-                                        fontSize: 16,
-                                      )),
+                    child: ListView.builder(
+                        itemCount: assistiveUnits.length,
+                        itemBuilder: (context, index) => Card(
+                              color: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10.0),
+                              ),
+                              child: Stack(children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    //const SizedBox(height: 8.0),
+                                    Image(
+                                      image: AssetImage(assistiveUnits[index]
+                                          ['image'] as String),
+                                      width: 100.0,
                                     ),
-                                  ),
-                                  TextButton(
-                                    onPressed: (au['isConnected'] as bool)
-                                        ? () async {
-                                            au['isPaused'] =
-                                                !(au['isPaused'] as bool);
-                                            await fluttertoast.Fluttertoast
-                                                .showToast(
-                                                    msg: (au[
-                                                            'isPaused'] as bool)
-                                                        ? "تم ايقاف التشغيل"
-                                                        : "تم استئناف التشغيل",
-                                                    toastLength: fluttertoast
-                                                        .Toast.LENGTH_SHORT,
-                                                    gravity: fluttertoast
-                                                        .ToastGravity
-                                                        .BOTTOM_RIGHT,
-                                                    timeInSecForIosWeb: 1,
-                                                    backgroundColor:
-                                                        Colors.green,
-                                                    textColor: Colors.white,
-                                                    fontSize: 16.0);
-                                          stopDevice(au);
-                                          }
-                                        : null,
-                                    child: Text(
-                                      au['isPaused'] as bool
-                                          ? "استئناف"
-                                          : "إيقاف",
-                                      style: GoogleFonts.rubik(
-                                          textStyle: TextStyle(
-                                        fontSize: 16,
-                                      )),
-                                    ),
-                                  ),
-                                ]),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
+                                    Column(children: [
+                                      Text(
+                                        assistiveUnits[index]['name'] as String,
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 20),
+                                      ),
+
+                                      //const SizedBox(height: 5.0),
+                                      Row(children: [
+                                        TextButton(
+                                          onPressed: () async {
+                                            if (assistiveUnits[index]
+                                                ['isConnected'] as bool) {
+                                              await disconnectFromAssistiveDevice(
+                                                  assistiveUnits[index],
+                                                  context);
+                                              await fluttertoast.Fluttertoast
+                                                  .showToast(
+                                                      msg: "تم الإنفصال بنجاح",
+                                                      toastLength: fluttertoast
+                                                          .Toast.LENGTH_SHORT,
+                                                      gravity: fluttertoast
+                                                          .ToastGravity
+                                                          .BOTTOM_RIGHT,
+                                                      timeInSecForIosWeb: 1,
+                                                      backgroundColor:
+                                                          Colors.green,
+                                                      textColor: Colors.white,
+                                                      fontSize: 16.0);
+                                            } else {
+                                              await connectToAssistiveDevice(
+                                                  assistiveUnits[index],
+                                                  context);
+                                            }
+                                          },
+
+                                          //fixedSize: const Size(100, 30),
+
+                                          child: Text(
+                                              !(assistiveUnits[index]
+                                                      ['isConnected'] as bool)
+                                                  ? "اقتران"
+                                                  : "انفصال",
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                              )),
+                                        ),
+                                        TextButton(
+                                          onPressed: (assistiveUnits[index]
+                                                  ['isConnected'] as bool)
+                                              ? () async {
+                                                  assistiveUnits[index][
+                                                          'isPassistiveUnits[index]sed'] =
+                                                      !(assistiveUnits[index][
+                                                              'isPassistiveUnits[index]sed']
+                                                          as bool);
+                                                  await fluttertoast.Fluttertoast
+                                                      .showToast(
+                                                          msg: (assistiveUnits[
+                                                                          index]
+                                                                      [
+                                                                      'isPassistiveUnits[index]sed']
+                                                                  as bool)
+                                                              ? "تم ايقاف التشغيل"
+                                                              : "تم استئناف التشغيل",
+                                                          toastLength:
+                                                              fluttertoast.Toast
+                                                                  .LENGTH_SHORT,
+                                                          gravity: fluttertoast
+                                                              .ToastGravity
+                                                              .BOTTOM_RIGHT,
+                                                          timeInSecForIosWeb: 1,
+                                                          backgroundColor:
+                                                              Colors.green,
+                                                          textColor:
+                                                              Colors.white,
+                                                          fontSize: 16.0);
+                                                  stopDevice(
+                                                      assistiveUnits[index]);
+                                                }
+                                              : null,
+                                          child: Text(
+                                              assistiveUnits[index]['isPaused']
+                                                      as bool
+                                                  ? "استئناف"
+                                                  : "إيقاف",
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                              )),
+                                        ),
+                                      ]),
+                                    ]),
+                                  ],
+                                ),
+                                Positioned(
+                                    left: 10,
+                                    child: GFButton(
+                                        onPressed: () {},
+                                        text: assistiveUnits[index]
+                                                ['isConnected'] as bool
+                                            ? "متصل"
+                                            : "غير متصل",
+                                        shape: GFButtonShape.pills,
+                                        size: GFSize.SMALL,
+                                        color: assistiveUnits[index]
+                                                ['isConnected'] as bool
+                                            ? GFColors.SUCCESS
+                                            : GFColors.WARNING,
+                                        textStyle: GoogleFonts.cairo(
+                                          color: assistiveUnits[index]
+                                                  ['isConnected'] as bool
+                                              ? GFColors.SUCCESS
+                                              : GFColors.WARNING,
+                                        ),
+                                        type: GFButtonType.outline,
+                                        icon: Icon(
+                                          assistiveUnits[index]['isConnected']
+                                                  as bool
+                                              ? Icons.link
+                                              : Icons.link_off_rounded,
+                                          color: assistiveUnits[index]
+                                                  ['isConnected'] as bool
+                                              ? GFColors.SUCCESS
+                                              : GFColors.WARNING,
+                                        ))),
+                              ]),
+                            )),
                   ),
                 ],
               ),
       ),
     );
   }
-
-  // Future<void> _readDataFromCameraStream(JpegImage image) async {
-  //   if (!isUsingCamera) return;
-
-  //   final detectedObjects = [];
-  //   if (detectedObjects.isEmpty) return;
-  //   final priorityObject = ""; //_analyzeObjects(detectedObjects);
-  //   printDebug(detectedObjects);
-
-  //   if (priorityObject != null) {
-  //     final parameters = {
-  //       'weight': priorityObject.measureWeight(),
-  //       'label': priorityObject.label,
-  //       'confidence': detectedObjects.firstWhere(
-  //           (obj) => obj['className'] == priorityObject.label)['confidence'],
-  //       'isPersonMoving': priorityObject.isPersonMoving,
-  //       'isObjectMoving': priorityObject.isObjectMoving,
-  //       'direction': priorityObject.direction
-  //     };
-
-  //     if (_lastItem == null ||
-  //         priorityObject.itemInitializedAt
-  //                 .difference(_lastItem!.itemInitializedAt)
-  //                 .inSeconds >
-  //             2.5) {
-  //       _lastItem = priorityObject;
-
-  //       if (isPerformingAction) return;
-  //       isPerformingAction = true;
-  //       printDebug("Performing action...");
-  //       _taskEntryPoint(parameters).then((_) => isPerformingAction = false);
-  //     }
-  //   }
-  // }
 
   Future<void> readFromBLEStream() async {
     isScanning = true;
@@ -678,7 +686,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         txrxChar.onValueReceived.listen((value) async {
                       final data = utf8.decode(value);
                       printDebug(data);
-                      if (isRasberryPaused) return; 
+                      if (isRasberryPaused) return;
 
                       await HapticFeedback.vibrate();
                       Future.delayed(Duration(milliseconds: 100), () async {
@@ -711,8 +719,8 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   static Future<void> writeToBraille(String caption) async {
-    if ((assistiveUnits[0]['isConnected'] as bool) && (assistiveUnits[0]
-        ['isPaused'] as bool) == false) {
+    if ((assistiveUnits[0]['isConnected'] as bool) &&
+        (assistiveUnits[0]['isPaused'] as bool) == false) {
       BluetoothCharacteristic? characteristic = assistiveUnits[0]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
@@ -729,8 +737,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // ignore: unused_element
   static Future<void> _vibrate(String direction) async {
-    if ((assistiveUnits[1]['isConnected'] as bool) && (assistiveUnits[1]
-        ['isPaused'] as bool) == false) {
+    if ((assistiveUnits[1]['isConnected'] as bool) &&
+        (assistiveUnits[1]['isPaused'] as bool) == false) {
       BluetoothCharacteristic? characteristic = assistiveUnits[1]
           ['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
@@ -962,10 +970,11 @@ class _MyHomePageState extends State<MyHomePage> {
       lastDirectedStep = -1;
     }
   }
-  
+
   stopDevice(Map<String, Object?> au) {
     if (au['name'] == "خلية برايل") {
-      BluetoothCharacteristic? characteristic = au['connectedCharacteristic'] as BluetoothCharacteristic?;
+      BluetoothCharacteristic? characteristic =
+          au['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
         try {
           characteristic.write(utf8.encode(" "));

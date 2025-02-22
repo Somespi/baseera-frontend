@@ -58,6 +58,7 @@ dependencies:
   geocoding: ^3.0.0
   geolocator: ^12.0.0
   fluttertoast: ^8.2.12
+  getwidget: ^5.0.0
 
 dev_dependencies:
   flutter_test:
