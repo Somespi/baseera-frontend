@@ -466,16 +466,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                       } else {
                                         await connectToAssistiveDevice(
                                             au, context);
-                                        fluttertoast.Fluttertoast.showToast(
-                                            msg: "تم الإقتران بنجاح",
-                                            toastLength:
-                                                fluttertoast.Toast.LENGTH_SHORT,
-                                            gravity: fluttertoast
-                                                .ToastGravity.BOTTOM_RIGHT,
-                                            timeInSecForIosWeb: 1,
-                                            backgroundColor: Colors.green,
-                                            textColor: Colors.white,
-                                            fontSize: 16.0);
+                                        
                                       }
                                     },
 

@@ -12,15 +12,14 @@ Future<List<ScanResult>> performScan() async {
     return await FlutterBluePlus.scanResults.first;
   } catch (e) {
     printDebug("Error: $e");
-    Fluttertoast.showToast( 
-      msg: "حدث خطأ أثناء البحث",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM_RIGHT,
-      timeInSecForIosWeb: 1,
-      backgroundColor: Colors.grey,
-      textColor: Colors.white,
-      fontSize: 16.0
-    );
+    Fluttertoast.showToast(
+        msg: "حدث خطأ أثناء البحث",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM_RIGHT,
+        timeInSecForIosWeb: 1,
+        backgroundColor: Colors.grey,
+        textColor: Colors.white,
+        fontSize: 16.0);
     return [];
   }
 }
@@ -104,39 +103,36 @@ Future<Map<String, BluetoothCharacteristic?>> findCharacteristics(
       switch (characteristic.characteristicUuid.str) {
         case 'ff4b4830-efb2-4eac-8b70-32cd4d7c0996':
           wifi = characteristic;
-          Fluttertoast.showToast( 
-            msg: "تم الاتصال بخاصية الواي فاي",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM_RIGHT,
-            timeInSecForIosWeb: 1,
-            backgroundColor: Colors.grey,
-            textColor: Colors.white,
-            fontSize: 16.0
-          );
+          Fluttertoast.showToast(
+              msg: "تم الاتصال بخاصية الواي فاي",
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.BOTTOM_RIGHT,
+              timeInSecForIosWeb: 1,
+              backgroundColor: Colors.grey,
+              textColor: Colors.white,
+              fontSize: 16.0);
           break;
         case '5c8be1d7-a6d8-4590-9370-b1380de38fb5':
           txrx = characteristic;
-          Fluttertoast.showToast( 
-            msg: "تم الاتصال بخاصية البيانات",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM_RIGHT,
-            timeInSecForIosWeb: 1,
-            backgroundColor: Colors.grey,
-            textColor: Colors.white,
-            fontSize: 16.0
-          );
+          Fluttertoast.showToast(
+              msg: "تم الاتصال بخاصية البيانات",
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.BOTTOM_RIGHT,
+              timeInSecForIosWeb: 1,
+              backgroundColor: Colors.grey,
+              textColor: Colors.white,
+              fontSize: 16.0);
           break;
         case '792af15e-ffce-46cc-b98d-e85e6c66dbf3':
           ip = characteristic;
-          Fluttertoast.showToast( 
-            msg: "تم الاتصال بخاصية الآي بي",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM_RIGHT,
-            timeInSecForIosWeb: 1,
-            backgroundColor: Colors.grey,
-            textColor: Colors.white,
-            fontSize: 16.0
-          );
+          Fluttertoast.showToast(
+              msg: "تم الاتصال بخاصية الآي بي",
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.BOTTOM_RIGHT,
+              timeInSecForIosWeb: 1,
+              backgroundColor: Colors.grey,
+              textColor: Colors.white,
+              fontSize: 16.0);
           break;
       }
     }
@@ -151,30 +147,38 @@ Future<Map<String, BluetoothCharacteristic?>> findCharacteristics(
 
 Future<void> connectToAssistiveDevice(
     Map<String, Object?> au, BuildContext context) async {
-
   try {
     var result = await selectDevice(context);
     if (result == null) {
       printDebug("No device selected.");
       return;
     }
-    
+
     au["connectedDevice"] = result;
     await (au["connectedDevice"] as BluetoothDevice?)!.connect();
 
-    var services = await (au["connectedDevice"] as BluetoothDevice?)!
-        .discoverServices();
+    var services =
+        await (au["connectedDevice"] as BluetoothDevice?)!.discoverServices();
 
     for (var service in services) {
       for (var characteristic in service.characteristics) {
         if (characteristic.characteristicUuid.str ==
             'beb5483e-36e1-4688-b7f5-ea07361b26a1') {
-          printDebug("Found characteristic: ${characteristic.characteristicUuid}");
+          printDebug(
+              "Found characteristic: ${characteristic.characteristicUuid}");
           au["connectedCharacteristic"] = characteristic;
           au["connectedService"] = service;
           printDebug("Connected characteristic...");
           (context as Element).markNeedsBuild();
           printDebug("Target characteristic saved!");
+          Fluttertoast.showToast(
+              msg: "تم الإقتران بنجاح",
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.BOTTOM_RIGHT,
+              timeInSecForIosWeb: 1,
+              backgroundColor: Colors.green,
+              textColor: Colors.white,
+              fontSize: 16.0);
           break;
         }
       }
@@ -197,53 +201,49 @@ Future<void> disconnectFromAssistiveDevice(
       au["connectedService"] = null;
       au["connectedCharacteristic"] = null;
 
-      
       (context as Element).markNeedsBuild();
     } catch (e) {
       printDebug("Error during disconnection: $e");
-      Fluttertoast.showToast( 
-        msg: "حدث خطأ أثناء الفصل",
+      Fluttertoast.showToast(
+          msg: "حدث خطأ أثناء الفصل",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM_RIGHT,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.grey,
+          textColor: Colors.white,
+          fontSize: 16.0);
+    }
+  } else {
+    printDebug("No device connected.");
+    Fluttertoast.showToast(
+        msg: "لا يوجد جهاز متصل",
         toastLength: Toast.LENGTH_SHORT,
         gravity: ToastGravity.BOTTOM_RIGHT,
         timeInSecForIosWeb: 1,
         backgroundColor: Colors.grey,
         textColor: Colors.white,
-        fontSize: 16.0
-      );
-    }
-  } else {
-    printDebug("No device connected.");
-    Fluttertoast.showToast( 
-      msg: "لا يوجد جهاز متصل",
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM_RIGHT,
-      timeInSecForIosWeb: 1,
-      backgroundColor: Colors.grey,
-      textColor: Colors.white,
-      fontSize: 16.0
-    );
+        fontSize: 16.0);
   }
 }
 
-  Future<Map<String, dynamic>> connectToRPi5(BuildContext context) async {
-    BluetoothDevice? device;
+Future<Map<String, dynamic>> connectToRPi5(BuildContext context) async {
+  BluetoothDevice? device;
 
-    try {
-      device = await selectDevice(context);
+  try {
+    device = await selectDevice(context);
 
-      await device!.connect();
-      var services = await device.discoverServices();
-      Map<String, dynamic> characteristics =
-          await findCharacteristics(services);
-      characteristics.addEntries({"device": device}.entries);
-      return characteristics;
-    } catch (e) {
-      printDebug("Error: $e");
-      return {
-        'wifi': null,
-        'txrx': null,
-        'ip': null,
-        'device': null,
-      };
-    }
+    await device!.connect();
+    var services = await device.discoverServices();
+    Map<String, dynamic> characteristics = await findCharacteristics(services);
+    characteristics.addEntries({"device": device}.entries);
+    return characteristics;
+  } catch (e) {
+    printDebug("Error: $e");
+    return {
+      'wifi': null,
+      'txrx': null,
+      'ip': null,
+      'device': null,
+    };
   }
+}
