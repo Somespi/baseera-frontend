@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:basera/pages/ar_route.dart';
+//import 'package:basera/pages/ar_route.dart';
 import 'package:basera/pages/maps_route.dart';
 import 'package:basera/pages/ocr_route.dart';
 import 'package:basera/services/maps.dart';
@@ -17,7 +17,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image/image.dart' as img;
-import 'package:onnxruntime/onnxruntime.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -47,12 +46,12 @@ bool isRasberryConnected = false;
 
 String connectedIp = "";
 
-const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(), ARroutePage()];
+const routes = <Widget?>[null, DocumentsPage(), MapsRoutePage(),]; //ARroutePage()];
 const titles = <String>[
   "الصفحة الرئيسية",
   "المستندات",
   "المواقع",
-  "الماسح الضوئي"
+  //"الماسح الضوئي"
 ];
 var assistiveUnits = [
   {
@@ -82,7 +81,6 @@ var assistiveUnits = [
 ];
 
 void main() async {
-  OrtEnv.instance.init();
   WidgetsFlutterBinding.ensureInitialized();
   final rootIsolateToken = RootIsolateToken.instance;
   if (rootIsolateToken != null) {
@@ -243,7 +241,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() async {
-    OrtEnv.instance.release();
     speechToTextService.dispose();
     _gyroscopeSubscription?.cancel();
     super.dispose();
