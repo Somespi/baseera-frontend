@@ -43,7 +43,7 @@ dynamic directionsSegments;
 
 bool isListeningToPlaceForTaxi = false;
 bool isConfirmingTaxiForOuterPlace = false;
-
+String lastAskedQuestion = "";
 String lastSentData = "";
 bool isRasberryConnected = false;
 bool isRasberryPaused = false;
@@ -154,11 +154,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
   int _selectedIndex = 0;
   BluetoothCharacteristic? _txRxDevice;
+  BluetoothDevice? _rasberryDevice;
   bool _lastIsPersonMoving = false;
   bool isPerformingAction = false;
   bool _isAsking = false;
   String foundDeviceName = "";
   bool isScanning = false;
+
+  final answerQuestionsStreamController = StreamController<String>();
 
   List<Map<String, dynamic>?> previousObjects = [];
 
@@ -175,6 +178,12 @@ class _MyHomePageState extends State<MyHomePage> {
     _initializeGyroscope();
     getPermissions();
     _handleLocationPermission();
+
+    answerQuestionsStreamController.stream.listen((event) async {
+      final classification = event.split(",")[0];
+      final question = event.split(",")[1];
+      await answerQuestion(classification, question);
+    });
   }
 
   /// Initializes the object detection model.
@@ -229,10 +238,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _initializeGyroscope() {
-    const double movementThreshold = 0.2;
+    const double movementThreshold = 0.32;
     // Subscribe to the gyroscope event stream
     _gyroscopeSubscription =
-        gyroscopeEventStream().listen((GyroscopeEvent event) {
+        gyroscopeEventStream().listen((GyroscopeEvent event) async {
       // Calculate the magnitude of the gyroscope reading
       final double magnitude =
           (event.x * event.x) + (event.y * event.y) + (event.z * event.z);
@@ -240,12 +249,12 @@ class _MyHomePageState extends State<MyHomePage> {
         isPersonMoving = magnitude > movementThreshold;
         if (isPersonMoving != _lastIsPersonMoving) {
           _lastIsPersonMoving = isPersonMoving;
-          if (_txRxDevice != null) {
-            _txRxDevice!
-                .write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
-          }
         }
       });
+      if (_txRxDevice != null && !isRasberryPaused) {
+        await _txRxDevice
+            ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
+      }
     });
   }
 
@@ -253,6 +262,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() async {
     speechToTextService.dispose();
     _gyroscopeSubscription?.cancel();
+    answerQuestionsStreamController.close();
     super.dispose();
   }
 
@@ -316,32 +326,61 @@ class _MyHomePageState extends State<MyHomePage> {
               ? FloatingActionButton(
                   heroTag: "أيقاف الموقع",
                   child: Icon(Icons.location_pin),
-                  onPressed: () {
-                    setState(() async {
+                  onPressed: () async {
+                    setState(() {
                       isListeningToPlace = false;
                       isDirectionServiceRunning = false;
                       lastDirectedStep = -1;
                       directionsSegments = null;
-                      await ttsService.speak("تم إيقاف التنقل");
-                      await writeToBraille("تم إيقاف التنقل");
                     });
+                    await ttsService.speak("تم إيقاف التنقل");
+                    await writeToBraille("تم إيقاف التنقل");
                   },
                 )
+              : SizedBox(height: 0.0),
+          SizedBox(height: 10.0),
+          isRasberryConnected
+              ? FloatingActionButton(
+                  heroTag: "pause",
+                  onPressed: () async {
+                    if (isRasberryConnected) {
+                      if (isRasberryPaused) {
+                       await  _txRxDevice?.write(utf8.encode("pause,1"));
+                        isRasberryPaused = false;
+                      } else {
+                        await _txRxDevice?.write(utf8.encode("pause,0"));
+                        isRasberryPaused = true;
+                      }
+                    }
+                  },
+                  child: !isRasberryConnected
+                      ? isScanning
+                          ? const CircularProgressIndicator()
+                          : const Icon(Icons.camera)
+                      : isRasberryPaused
+                          ? const Icon(Icons.play_arrow_rounded)
+                          : const Icon(Icons.stop_rounded))
               : SizedBox(height: 0.0),
           SizedBox(height: 10.0),
           FloatingActionButton(
               heroTag: "camera",
               onPressed: () async {
-                printDebug("Detecting press...");
-                await readFromBLEStream();
+                if (isRasberryConnected) {
+                  await _txRxDevice?.write(utf8.encode("pause,0"));
+                  await _rasberryDevice?.disconnect();
+                  setState(() {
+                    isRasberryPaused = true;
+                    isRasberryConnected = false;
+                  });
+                } else {
+                  readFromBLEStream();
+                }
               },
               child: !isRasberryConnected
                   ? isScanning
                       ? const CircularProgressIndicator()
                       : const Icon(Icons.camera)
-                  : isRasberryPaused
-                      ? const Icon(Icons.play_arrow_rounded)
-                      : const Icon(Icons.stop_circle_outlined)),
+                  : const Icon(Icons.bluetooth_disabled_rounded))
         ],
       ),
       body: Padding(
@@ -357,8 +396,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         : 150.0,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(15.0),
-                      onLongPress: () => setState(() {
-                        isElementMovingEnabled = !isElementMovingEnabled;
+                      onLongPress: () {
+                        setState(() {
+                          isElementMovingEnabled = !isElementMovingEnabled;
+                        });
                         fluttertoast.Fluttertoast.showToast(
                             msg: !isElementMovingEnabled
                                 ? "تم تفعيل الحركة"
@@ -369,7 +410,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             backgroundColor: Colors.green,
                             textColor: Colors.white,
                             fontSize: 16.0);
-                      }),
+                      },
                       onTap: () async {
                         await _askQuestion();
                         //await speechToTextService.stopListening();
@@ -416,7 +457,6 @@ class _MyHomePageState extends State<MyHomePage> {
                         fontWeight: FontWeight.bold,
                         color: Color.fromARGB(255, 0, 0, 0),
                         fontSize: 16,
-                        
                       )),
                   const SizedBox(height: 10.0),
                   Expanded(
@@ -489,17 +529,16 @@ class _MyHomePageState extends State<MyHomePage> {
                                           onPressed: (assistiveUnits[index]
                                                   ['isConnected'] as bool)
                                               ? () async {
-                                                  assistiveUnits[index][
-                                                          'isPassistiveUnits[index]sed'] =
-                                                      !(assistiveUnits[index][
-                                                              'isPassistiveUnits[index]sed']
-                                                          as bool);
+                                                  assistiveUnits[index]
+                                                          ['isPaused'] =
+                                                      !(assistiveUnits[index]
+                                                          ['isPaused'] as bool);
                                                   await fluttertoast.Fluttertoast
                                                       .showToast(
                                                           msg: (assistiveUnits[
                                                                           index]
                                                                       [
-                                                                      'isPassistiveUnits[index]sed']
+                                                                      'isPaused']
                                                                   as bool)
                                                               ? "تم ايقاف التشغيل"
                                                               : "تم استئناف التشغيل",
@@ -593,6 +632,8 @@ class _MyHomePageState extends State<MyHomePage> {
     final txrxChar = bleConnection['txrx'] as BluetoothCharacteristic;
     final ipChar = bleConnection['ip'] as BluetoothCharacteristic;
 
+    _rasberryDevice = device;
+
     final iPChangeSubscribtion = ipChar.onValueReceived.listen((value) async {
       final data = utf8.decode(value);
       printDebug(data);
@@ -683,19 +724,10 @@ class _MyHomePageState extends State<MyHomePage> {
                     _txRxDevice = txrxChar;
                     wifiListSubscription.cancel();
                     final subscription =
-                        txrxChar.onValueReceived.listen((value) async {
-                      final data = utf8.decode(value);
-                      printDebug(data);
-                      if (isRasberryPaused) return;
-
-                      await HapticFeedback.vibrate();
-                      Future.delayed(Duration(milliseconds: 100), () async {
-                        await ttsService.speak(data);
-                      });
-                      await writeToBraille(data);
-                    });
+                        txrxChar.onValueReceived.listen(onValueStreamReceived);
                     device.cancelWhenDisconnected(subscription);
                     await txrxChar.setNotifyValue(true);
+                    await _txRxDevice?.write(utf8.encode("pause,1"));
                     fluttertoast.Fluttertoast.showToast(
                         msg: "تم الإقتران بنجاح",
                         toastLength: fluttertoast.Toast.LENGTH_SHORT,
@@ -716,6 +748,86 @@ class _MyHomePageState extends State<MyHomePage> {
         );
       },
     );
+  }
+
+  void onValueStreamReceived(value) async {
+    final data = utf8.decode(value);
+    printDebug(data);
+    if (isRasberryPaused) return;
+    if (data.startsWith("identify")) {
+      final classification = data.split(',')[1];
+      answerQuestionsStreamController.sink.add("$classification,$lastAskedQuestion");
+    }
+    if (data.startsWith("answer")) {
+      final answer = data.split(',')[1];
+       await Future.delayed(Duration(milliseconds: 50));
+      ttsService.speak(answer);
+      writeToBraille(answer);
+    }
+    await HapticFeedback.vibrate();
+  }
+
+  Future<void> answerQuestion(String classification, String question) async {
+    if (classification == 'taxi') {
+      await ttsService.speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+      await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
+      isListeningToPlaceForTaxi = true;
+    } else if (classification == 'maps') {
+      await ttsService.speak("إلى أين تريد الذهاب؟");
+      await writeToBraille("إلى أين تريد الذهاب؟");
+      printDebug("listening to place...");
+      isListeningToPlace = true;
+    } else if (classification == 'ocr') {
+      if (!isRasberryConnected) {
+        await ttsService.speak("يجب فتح الكَمِرا");
+        await writeToBraille("يجب فتح الكَمِرا");
+      } else {
+        await _txRxDevice?.write(utf8.encode(
+            """ocr,Analyze the text from the provided image and summarize the main ideas clearly and concisely as a paragraph. Return only the summary without additional comments or explanations, also, check what the blind is asking you : $question."""));
+        await Future.delayed(const Duration(seconds: 5), () async {
+          final response =
+              await http.get(Uri.parse("http://$connectedIp:8080/"));
+          printDebug(response.body);
+          final decodedJson = jsonDecode(response.body);
+          final documents = await Ocr.getConfigFileJSON();
+          final uuid = Uuid().v1();
+          final file = File(
+              '${(await getApplicationDocumentsDirectory()).path}/$uuid.jpg');
+          file.writeAsBytes(base64Decode(decodedJson['document']));
+          if (documents is List) {
+            documents.add({
+              'title': decodedJson['title'],
+              'summary': decodedJson['summary'],
+              'image_path': file.path,
+            });
+            await File(
+                    '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
+                .writeAsString(jsonEncode(documents));
+          }
+        });
+      }
+    } else {
+      if (!isRasberryConnected) {
+        await ttsService.speak("يجب فتح الكَمِرا");
+        await writeToBraille("يجب فتح الكَمِرا");
+      } else {
+        Position? origin;
+        await Geolocator.getCurrentPosition(
+                desiredAccuracy: LocationAccuracy.best)
+            .then((Position position) {
+          origin = position;
+        });
+
+        final location = await placemarkFromCoordinates(
+            origin?.latitude ?? 0, origin?.longitude ?? 0);
+        printDebug("Trying to ask question....................");
+        await _txRxDevice?.write(utf8.encode(
+          """question,Be as a Visual Question Answerer for a blind, answer the question: '$question' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that
+              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
+              ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
+        ));
+      }
+    }
   }
 
   static Future<void> writeToBraille(String caption) async {
@@ -767,16 +879,16 @@ class _MyHomePageState extends State<MyHomePage> {
     await speechToTextService.stopListening();
 
     _isAsking = true;
-    await speechToTextService.startListening((text) async {
+    await speechToTextService.startListening((question) async {
       setState(() {
         _isAsking = false;
       });
-
+      lastAskedQuestion = question;
       await ttsService.speak('لحظةً');
       await writeToBraille('لحظة');
       if (isListeningToPlace) {
         isListeningToPlace = false;
-        final loc = await Maps.getPositionOf(text);
+        final loc = await Maps.getPositionOf(question);
         Position? origin;
         await Geolocator.getCurrentPosition(
                 desiredAccuracy: LocationAccuracy.best)
@@ -814,12 +926,12 @@ class _MyHomePageState extends State<MyHomePage> {
           origin = position;
         });
 
-        final loc = await Maps.getPositionOf(text);
+        final loc = await Maps.getPositionOf(question);
         if (loc == null) {
           final place = await Maps.getClosestLocation(
               latitude: origin!.latitude,
               longitude: origin!.longitude,
-              placeName: text);
+              placeName: question);
           if (place == null) {
             await ttsService.speak("لم أعثر على شيء, عذرََا");
             await writeToBraille("لم أعثر على شيء, عذرََا");
@@ -861,76 +973,8 @@ class _MyHomePageState extends State<MyHomePage> {
           await writeToBraille("لم يتم العثور على سائق أُجرَة");
         }
       }
-
-      final bestClassification = {
-        'taxi': UberService.isRequestingTaxi(text, taxiTerms),
-        'maps': Maps.isRequestingDirections(text, mapsTerms),
-        'ocr': Ocr.isRequestingOCR(text, oCRterms),
-      };
-      final maxClassify = bestClassification.entries.reduce(
-          (current, next) => current.value > next.value ? current : next);
-      printDebug("maxClassify: $maxClassify");
-      if (maxClassify.key == 'taxi' && !(bestClassification['maps']! >= 0.3)) {
-        await ttsService
-            .speak("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
-        await writeToBraille("سأعمل على طلب سائق أُجرَة, إلى أين تريد الذهاب؟");
-        isListeningToPlaceForTaxi = true;
-      } else if (maxClassify.key == 'maps' ||
-          bestClassification['maps']! >= 0.4) {
-        await ttsService.speak("إلى أين تريد الذهاب؟");
-        await writeToBraille("إلى أين تريد الذهاب؟");
-        printDebug("listening to place...");
-        isListeningToPlace = true;
-      } else if (maxClassify.key == 'ocr' && maxClassify.value > 0.6) {
-        if (!isRasberryConnected) {
-          await ttsService.speak("يجب فتح الكَمِرا");
-          await writeToBraille("يجب فتح الكَمِرا");
-        } else {
-          await _txRxDevice?.write(utf8.encode(
-              """ocr,Analyze the text from the provided image and summarize the main ideas clearly and concisely as a paragraph. Return only the summary without additional comments or explanations."""));
-          await Future.delayed(const Duration(seconds: 5), () async {
-            final response =
-                await http.get(Uri.parse("http://$connectedIp:8080/"));
-            printDebug(response.body);
-            final decodedJson = jsonDecode(response.body);
-            final documents = await Ocr.getConfigFileJSON();
-            final uuid = Uuid().v1();
-            final file = File(
-                '${(await getApplicationDocumentsDirectory()).path}/$uuid.jpg');
-            file.writeAsBytes(base64Decode(decodedJson['document']));
-            if (documents is List) {
-              documents.add({
-                'title': decodedJson['title'],
-                'summary': decodedJson['summary'],
-                'image_path': file.path,
-              });
-              await File(
-                      '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
-                  .writeAsString(jsonEncode(documents));
-            }
-          });
-        }
-      } else {
-        if (!isRasberryConnected) {
-          await ttsService.speak("يجب فتح الكَمِرا");
-          await writeToBraille("يجب فتح الكَمِرا");
-        } else {
-          Position? origin;
-          await Geolocator.getCurrentPosition(
-                  desiredAccuracy: LocationAccuracy.best)
-              .then((Position position) {
-            origin = position;
-          });
-
-          final location = await placemarkFromCoordinates(
-              origin?.latitude ?? 0, origin?.longitude ?? 0);
-          await _txRxDevice?.write(utf8.encode(
-            """question,Be as a Visual Question Answerer for a blind, answer the question: '$text' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that
-              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
-              ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
-          ));
-        }
-      }
+      await _txRxDevice?.write(utf8.encode("identify,$question"));
+      return;
     });
   }
 
@@ -977,7 +1021,7 @@ class _MyHomePageState extends State<MyHomePage> {
           au['connectedCharacteristic'] as BluetoothCharacteristic?;
       if (characteristic != null) {
         try {
-          characteristic.write(utf8.encode(" "));
+          characteristic.write(utf8.encode("STOP"));
         } catch (e) {
           printDebug("ERROR!");
           fluttertoast.Fluttertoast.showToast(

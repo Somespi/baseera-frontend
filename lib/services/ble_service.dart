@@ -1,13 +1,24 @@
+// ignore_for_file: use_build_context_synchronously
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:basera/services/help_utilities.dart';
 
-Future<List<ScanResult>> performScan() async {
+Future<List<ScanResult>> performScan(BuildContext context) async {
   try {
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
+    Fluttertoast.showToast(
+        msg: "جاري البحث عن الأجهزة...",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.BOTTOM_RIGHT,
+        timeInSecForIosWeb: 1,
+        backgroundColor: Colors.grey,
+        textColor: Colors.white,
+        fontSize: 16.0);
+
+    await Future.delayed(const Duration(seconds: 3));
     await FlutterBluePlus.stopScan();
     return await FlutterBluePlus.scanResults.first;
   } catch (e) {
@@ -25,13 +36,12 @@ Future<List<ScanResult>> performScan() async {
 }
 
 Future<BluetoothDevice?> selectDevice(BuildContext context) async {
-  List<ScanResult> scanResults = await performScan();
-
+  List<ScanResult> scanResults = await performScan(context);
+  printDebug("Scan results: $scanResults");
   BluetoothDevice? selectedDevice;
   bool isSearching = false;
 
   await showDialog(
-    // ignore: use_build_context_synchronously
     context: context,
     builder: (BuildContext context) {
       return StatefulBuilder(
@@ -39,7 +49,6 @@ Future<BluetoothDevice?> selectDevice(BuildContext context) async {
           return AlertDialog(
             title: Text(
               'اختر الجهاز للإرتباط',
-              style: GoogleFonts.changa(),
             ),
             content: scanResults.isNotEmpty
                 ? SizedBox(
@@ -51,9 +60,17 @@ Future<BluetoothDevice?> selectDevice(BuildContext context) async {
                         final res = scanResults[index];
                         return ListTile(
                           title: Text(
-                              "${res.device.advName} - ${res.device.platformName}"),
+                              res.device.advName),
                           onTap: () {
                             setState(() {
+                              Fluttertoast.showToast(
+                                  msg: "تم اختيار ${res.device.advName}",
+                                  toastLength: Toast.LENGTH_SHORT,
+                                  gravity: ToastGravity.BOTTOM_RIGHT,
+                                  timeInSecForIosWeb: 1,
+                                  backgroundColor: Colors.green,
+                                  textColor: Colors.white,
+                                  fontSize: 16.0);
                               selectedDevice = res.device;
                             });
                           },
@@ -67,7 +84,7 @@ Future<BluetoothDevice?> selectDevice(BuildContext context) async {
               TextButton(
                 onPressed: () async {
                   setState(() => isSearching = true);
-                  scanResults = await performScan();
+                  scanResults = await performScan(context);
                   setState(() {
                     isSearching = false;
                   });
@@ -179,6 +196,8 @@ Future<void> connectToAssistiveDevice(
               backgroundColor: Colors.green,
               textColor: Colors.white,
               fontSize: 16.0);
+        au['isConnected'] = true;
+        au['isPaused'] = false;
           break;
         }
       }
@@ -200,6 +219,9 @@ Future<void> disconnectFromAssistiveDevice(
       au["connectedDevice"] = null;
       au["connectedService"] = null;
       au["connectedCharacteristic"] = null;
+
+        au['isConnected'] = false;
+        au['isPaused'] = false;
 
       (context as Element).markNeedsBuild();
     } catch (e) {
@@ -235,8 +257,12 @@ Future<Map<String, dynamic>> connectToRPi5(BuildContext context) async {
     await device!.connect();
     var services = await device.discoverServices();
     Map<String, dynamic> characteristics = await findCharacteristics(services);
-    characteristics.addEntries({"device": device}.entries);
-    return characteristics;
+    return {
+        'wifi': characteristics['wifi'],
+      'txrx': characteristics['txrx'],
+      'ip': characteristics['ip'],
+      'device': device,
+    };
   } catch (e) {
     printDebug("Error: $e");
     return {
