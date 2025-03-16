@@ -56,9 +56,9 @@ dependencies:
   #google_mlkit_text_recognition: ^0.8.1
   #ar_flutter_plugin_flutterflow: ^0.7.55
   geocoding: ^3.0.0
-  geolocator: ^12.0.0
+  geolocator: ^13.0.2
   fluttertoast: ^8.2.12
-  getwidget: ^5.0.0
+  getwidget: ^6.0.0
 
 dev_dependencies:
   flutter_test:

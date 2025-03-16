@@ -6,7 +6,7 @@ import FlutterMacOS
 import Foundation
 
 import audio_session
-import flutter_blue_plus
+import flutter_blue_plus_darwin
 import flutter_tts
 import geolocator_apple
 import just_audio

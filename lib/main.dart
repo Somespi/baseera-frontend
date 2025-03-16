@@ -34,7 +34,7 @@ late List<String> labels;
 DateTime lastImageTime = DateTime.now();
 TextToSpeechService ttsService = TextToSpeechService();
 SpeechToTextService speechToTextService = SpeechToTextService();
-
+String? lastRecievedClassification;
 Position? destination;
 bool isDirectionServiceRunning = false;
 bool isListeningToPlace = false;
@@ -60,6 +60,9 @@ const titles = <String>[
   "المواقع",
   //"الماسح الضوئي"
 ];
+
+
+
 var assistiveUnits = [
   {
     "name": "خلية برايل",
@@ -182,6 +185,7 @@ class _MyHomePageState extends State<MyHomePage> {
     answerQuestionsStreamController.stream.listen((event) async {
       final classification = event.split(",")[0];
       final question = event.split(",")[1];
+      printDebug("Writing from stream about \"$question\"");
       await answerQuestion(classification, question);
     });
   }
@@ -252,8 +256,8 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       });
       if (_txRxDevice != null && !isRasberryPaused) {
-        await _txRxDevice
-            ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
+        // await _txRxDevice
+        //     ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
       }
     });
   }
@@ -345,10 +349,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   onPressed: () async {
                     if (isRasberryConnected) {
                       if (isRasberryPaused) {
-                       await  _txRxDevice?.write(utf8.encode("pause,1"));
+                        await _txRxDevice?.write(utf8.encode("pause,0"));
                         isRasberryPaused = false;
                       } else {
-                        await _txRxDevice?.write(utf8.encode("pause,0"));
+                        await _txRxDevice?.write(utf8.encode("pause,1"));
                         isRasberryPaused = true;
                       }
                     }
@@ -366,7 +370,7 @@ class _MyHomePageState extends State<MyHomePage> {
               heroTag: "camera",
               onPressed: () async {
                 if (isRasberryConnected) {
-                  await _txRxDevice?.write(utf8.encode("pause,0"));
+                  await _txRxDevice?.write(utf8.encode("pause,1"));
                   await _rasberryDevice?.disconnect();
                   setState(() {
                     isRasberryPaused = true;
@@ -727,7 +731,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         txrxChar.onValueReceived.listen(onValueStreamReceived);
                     device.cancelWhenDisconnected(subscription);
                     await txrxChar.setNotifyValue(true);
-                    await _txRxDevice?.write(utf8.encode("pause,1"));
+                    await _txRxDevice?.write(utf8.encode("pause,0"));
                     fluttertoast.Fluttertoast.showToast(
                         msg: "تم الإقتران بنجاح",
                         toastLength: fluttertoast.Toast.LENGTH_SHORT,
@@ -756,11 +760,11 @@ class _MyHomePageState extends State<MyHomePage> {
     if (isRasberryPaused) return;
     if (data.startsWith("identify")) {
       final classification = data.split(',')[1];
-      answerQuestionsStreamController.sink.add("$classification,$lastAskedQuestion");
+      lastRecievedClassification = classification;
     }
     if (data.startsWith("answer")) {
       final answer = data.split(',')[1];
-       await Future.delayed(Duration(milliseconds: 50));
+      await Future.delayed(Duration(milliseconds: 50));
       ttsService.speak(answer);
       writeToBraille(answer);
     }
@@ -821,10 +825,16 @@ class _MyHomePageState extends State<MyHomePage> {
         final location = await placemarkFromCoordinates(
             origin?.latitude ?? 0, origin?.longitude ?? 0);
         printDebug("Trying to ask question....................");
+        // await _txRxDevice?.write(utf8.encode(
+        //   """question,answer the question: '$question' 
+        //       ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
+        //       ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : "Also, Note that the blind is currently not requesting to head to a specefiec location."}
+              
+        //       """,
+        // ));
+
         await _txRxDevice?.write(utf8.encode(
-          """question,Be as a Visual Question Answerer for a blind, answer the question: '$question' with short answer IN ARABIC. Do not say anything else also note that the question is in arabic and is latinized, so deal with that
-              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
-              ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : ""}""",
+          """question,'$question'""",
         ));
       }
     }
@@ -974,7 +984,17 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       await _txRxDevice?.write(utf8.encode("identify,$question"));
-      return;
+      await Future.doWhile(() async {
+        await Future.delayed(const Duration(milliseconds: 10));
+        return lastRecievedClassification == null;
+      });
+      printDebug("Last Updated value $lastRecievedClassification");
+      if (lastRecievedClassification != null) {
+              
+                await answerQuestion(lastRecievedClassification!, lastAskedQuestion);
+
+        lastRecievedClassification = null;
+      }
     });
   }
 
