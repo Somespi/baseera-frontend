@@ -28,7 +28,7 @@ class Maps {
     // for directions.
 
   static Future<Position?> getCurrentPosition() async {
-    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+    await Geolocator.getCurrentPosition()
 
     // Calculate the cosine similarity between the phrase and each of the terms
     // in the list.
@@ -273,7 +273,7 @@ class Maps {
       String locationName, List<String> acronyms) async {
     final locations = await getSavedLocationsJSON();
     Position? origin;
-    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+    await Geolocator.getCurrentPosition()
         .then((Position position) {
       origin = position;
     });

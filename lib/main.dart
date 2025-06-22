@@ -802,8 +802,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await writeToBraille("يجب فتح الكَمِرا");
       } else {
         Position? origin;
-        await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.best)
+        await Geolocator.getCurrentPosition()
             .then((Position position) {
           origin = position;
         });
@@ -886,8 +885,7 @@ class _MyHomePageState extends State<MyHomePage> {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(question);
         Position? origin;
-        await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.best)
+        await Geolocator.getCurrentPosition()
             .then((Position position) {
           origin = position;
         });
@@ -916,8 +914,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (isListeningToPlaceForTaxi) {
         isListeningToPlaceForTaxi = false;
         Position? origin;
-        await Geolocator.getCurrentPosition(
-                desiredAccuracy: LocationAccuracy.best)
+        await Geolocator.getCurrentPosition()
             .then((Position position) {
           origin = position;
         });
@@ -985,7 +982,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> handleDirecting() async {
     Position? origin;
-    await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+    await Geolocator.getCurrentPosition()
         .then((Position position) {
       origin = position;
     });
