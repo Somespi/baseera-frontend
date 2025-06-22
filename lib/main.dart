@@ -61,35 +61,20 @@ const titles = <String>[
   //"الماسح الضوئي"
 ];
 
-
-
 var assistiveUnits = [
-  {
-    "name": "خلية برايل",
-    "deviceName": "3C:84:27:C3:33:99",
-    "connectedDevice": null,
-    "connectedCharacteristic": null,
-    "connectedService": null,
-    "isPaused": false,
-    "isConnected": false,
-    "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
-    "image": "assets/icons/braille.png",
-    "description":
-        "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
-  },
-  {
-    "name": "هزازات الحركة",
-    "deviceName": "24:D7:EB:0F:09:02",
-    "connectedDevice": null,
-    "connectedCharacteristic": null,
-    "isPaused": false,
-    "connectedService": null,
-    "chars": "beb5483e-36e1-4688-b7f5-ea07361b26a",
-    "isConnected": false,
-    "image": "assets/icons/motion.png",
-    "description":
-        "جهاز هزازات الحركة يترجم النصوص المكتوبة في الحركة بشكل مستقل.",
-  },
+  createAssistiveUnitMap(
+    "خلية برايل",
+    "3C:84:27:C3:33:99",
+    "beb5483e-36e1-4688-b7f5-ea07361b26a",
+    "assets/icons/braille.png",
+    "جهاز بريل يترجم النصوص المكتوبة إلى نقاط بارزة لتمكين الأشخاص ذوي الاحتياج البصري والسمعي من قراءتها بشكل مستقل.",
+  ),
+  createAssistiveUnitMap(
+      "هزازات الحركة",
+      "24:D7:EB:0F:09:02",
+      "beb5483e-36e1-4688-b7f5-ea07361b26a",
+      "assets/icons/motion.png",
+      "جهاز هزازات الحركة يترجم النصوص المكتوبة في الحركة بشكل مستقل."),
 ];
 
 void main() async {
@@ -256,8 +241,8 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       });
       if (_txRxDevice != null && !isRasberryPaused) {
-        // await _txRxDevice
-        //     ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
+        await _txRxDevice
+            ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
       }
     });
   }
@@ -395,7 +380,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    height: isPersonMoving && !isElementMovingEnabled
+                    height: !isElementMovingEnabled
                         ? 400.0
                         : 150.0,
                     child: InkWell(
@@ -692,7 +677,9 @@ class _MyHomePageState extends State<MyHomePage> {
                               child: Text(ssid),
                             );
                           }).toList()
-                        : [DropdownMenuItem(child: Text('No Networks Found'))],
+                        : [
+                            DropdownMenuItem(child: Text('لا توجد شبكات متاحة'))
+                          ],
                   ),
                   SizedBox(height: 10),
                   TextField(
@@ -786,8 +773,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService.speak("يجب فتح الكَمِرا");
         await writeToBraille("يجب فتح الكَمِرا");
       } else {
-        await _txRxDevice?.write(utf8.encode(
-            """ocr,Analyze the text from the provided image and summarize the main ideas clearly and concisely as a paragraph. Return only the summary without additional comments or explanations, also, check what the blind is asking you : $question."""));
+        await _txRxDevice?.write(utf8.encode("""ocr, $question."""));
         await Future.delayed(const Duration(seconds: 5), () async {
           final response =
               await http.get(Uri.parse("http://$connectedIp:8080/"));
@@ -825,13 +811,13 @@ class _MyHomePageState extends State<MyHomePage> {
         final location = await placemarkFromCoordinates(
             origin?.latitude ?? 0, origin?.longitude ?? 0);
         printDebug("Trying to ask question....................");
-        // await _txRxDevice?.write(utf8.encode(
-        //   """question,answer the question: '$question' 
-        //       ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
-        //       ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : "Also, Note that the blind is currently not requesting to head to a specefiec location."}
+        await _txRxDevice?.write(utf8.encode(
+          """question,answer the question: '$question' 
+              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
+              ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : "Also, Note that the blind is currently not requesting to head to a specefiec location."}
               
-        //       """,
-        // ));
+              """,
+        ));
 
         await _txRxDevice?.write(utf8.encode(
           """question,'$question'""",
@@ -990,8 +976,7 @@ class _MyHomePageState extends State<MyHomePage> {
       });
       printDebug("Last Updated value $lastRecievedClassification");
       if (lastRecievedClassification != null) {
-              
-                await answerQuestion(lastRecievedClassification!, lastAskedQuestion);
+        await answerQuestion(lastRecievedClassification!, lastAskedQuestion);
 
         lastRecievedClassification = null;
       }

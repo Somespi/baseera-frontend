@@ -14,3 +14,19 @@ imglib.Image fromJpegToImg(image) {
   if (img == null) throw Exception("Error decoding JPEG image.");
   return img;
 }
+
+
+Map<String, dynamic> createAssistiveUnitMap(String displayName, String deviceAddress, String deviceCharacteristic, String displayImagePath, String displayDescription) {
+  return {
+    "name": displayName,
+    "deviceName": deviceAddress,
+    "connectedDevice": null,
+    "connectedCharacteristic": null,
+    "isPaused": false,
+    "connectedService": null,
+    "chars": deviceCharacteristic,
+    "isConnected": false,
+    "image": displayImagePath,
+    "description": displayDescription,
+  };
+}

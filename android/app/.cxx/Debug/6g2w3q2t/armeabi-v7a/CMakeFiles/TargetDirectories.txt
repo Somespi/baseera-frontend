@@ -1,2 +1,0 @@
-/home/alfarsi/code/baseerah/android/app/.cxx/Debug/6g2w3q2t/armeabi-v7a/CMakeFiles/edit_cache.dir
-/home/alfarsi/code/baseerah/android/app/.cxx/Debug/6g2w3q2t/armeabi-v7a/CMakeFiles/rebuild_cache.dir
