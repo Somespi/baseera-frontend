@@ -48,6 +48,7 @@ String lastSentData = "";
 bool isRasberryConnected = false;
 bool isRasberryPaused = false;
 String connectedIp = "";
+String connectedPort = "";
 
 const routes = <Widget?>[
   null,
@@ -240,7 +241,9 @@ class _MyHomePageState extends State<MyHomePage> {
           _lastIsPersonMoving = isPersonMoving;
         }
       });
-      if (_txRxDevice != null && !isRasberryPaused) {
+      if (_txRxDevice != null &&
+          !isRasberryPaused &&
+          _lastIsPersonMoving != isPersonMoving) {
         await _txRxDevice
             ?.write(utf8.encode("gyro,${_lastIsPersonMoving ? 1 : 0}"));
       }
@@ -355,11 +358,17 @@ class _MyHomePageState extends State<MyHomePage> {
               heroTag: "camera",
               onPressed: () async {
                 if (isRasberryConnected) {
-                  await _txRxDevice?.write(utf8.encode("pause,1"));
+                  try {
+                    await _txRxDevice?.write(utf8.encode("pause,1"));
+                  } catch (e) {
+                    printDebug(
+                        "Error pausing device: $e.. Device may not be connected.");
+                  }
                   await _rasberryDevice?.disconnect();
                   setState(() {
                     isRasberryPaused = true;
                     isRasberryConnected = false;
+                    isScanning = false;
                   });
                 } else {
                   readFromBLEStream();
@@ -380,9 +389,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: [
                   SizedBox(
                     width: double.infinity,
-                    height: !isElementMovingEnabled
-                        ? 400.0
-                        : 150.0,
+                    height: !isElementMovingEnabled ? 400.0 : 150.0,
                     child: InkWell(
                       borderRadius: BorderRadius.circular(15.0),
                       onLongPress: () {
@@ -401,7 +408,12 @@ class _MyHomePageState extends State<MyHomePage> {
                             fontSize: 16.0);
                       },
                       onTap: () async {
-                        await _askQuestion();
+                        if (!isRasberryConnected) {
+                          await ttsService.speak("يجب فتح الكَمِرا");
+                          await writeToBraille("يجب فتح الكَمِرا");
+                        } else {
+                          await _askQuestion();
+                        }
                         //await speechToTextService.stopListening();
                       },
                       child: Card(
@@ -748,6 +760,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (data.startsWith("identify")) {
       final classification = data.split(',')[1];
       lastRecievedClassification = classification;
+      answerQuestionsStreamController.add(data);
     }
     if (data.startsWith("answer")) {
       final answer = data.split(',')[1];
@@ -773,28 +786,71 @@ class _MyHomePageState extends State<MyHomePage> {
         await ttsService.speak("يجب فتح الكَمِرا");
         await writeToBraille("يجب فتح الكَمِرا");
       } else {
-        await _txRxDevice?.write(utf8.encode("""ocr, $question."""));
-        await Future.delayed(const Duration(seconds: 5), () async {
-          final response =
-              await http.get(Uri.parse("http://$connectedIp:8080/"));
-          printDebug(response.body);
-          final decodedJson = jsonDecode(response.body);
-          final documents = await Ocr.getConfigFileJSON();
-          final uuid = Uuid().v1();
-          final file = File(
-              '${(await getApplicationDocumentsDirectory()).path}/$uuid.jpg');
-          file.writeAsBytes(base64Decode(decodedJson['document']));
-          if (documents is List) {
+        await Future.delayed(const Duration(seconds: 5));
+
+        String? responseBody;
+
+        if (connectedPort.isEmpty) {
+          for (int port = 8080; port < 8090; port++) {
+            try {
+              final response =
+                  await http.get(Uri.parse("http://$connectedIp:$port/"));
+
+              if (response.statusCode != 200) continue;
+
+              connectedPort = port.toString();
+              responseBody = response.body;
+              printDebug("Connected to port $connectedPort");
+              break;
+            } catch (e) {
+              printDebug("Port $port failed: $e");
+            }
+          }
+        } else {
+          try {
+            final response = await http
+                .get(Uri.parse("http://$connectedIp:$connectedPort/"));
+            if (response.statusCode == 200) {
+              responseBody = response.body;
+            }
+          } catch (e) {
+            printDebug("Reconnect to port $connectedPort failed: $e");
+          }
+        }
+
+        if (responseBody != null) {
+          try {
+            final decodedJson = jsonDecode(responseBody);
+
+            final uuid = const Uuid().v1();
+            final documentsDir = await getApplicationDocumentsDirectory();
+            final file = File('${documentsDir.path}/$uuid.jpg');
+
+            await file.writeAsBytes(base64Decode(decodedJson['document']));
+
+            final configFile =
+                File('${documentsDir.path}/config_documents.json');
+            List<dynamic> documents = [];
+
+            if (await configFile.exists()) {
+              final content = await configFile.readAsString();
+              documents = jsonDecode(content) ?? [];
+            }
+
             documents.add({
               'title': decodedJson['title'],
               'summary': decodedJson['summary'],
               'image_path': file.path,
             });
-            await File(
-                    '${(await getApplicationDocumentsDirectory()).path}/config_documents.json')
-                .writeAsString(jsonEncode(documents));
+
+            await configFile.writeAsString(jsonEncode(documents));
+            printDebug("Document saved to: ${file.path}");
+          } catch (e) {
+            printDebug("Error processing server response: $e");
           }
-        });
+        } else {
+          printDebug("No valid server response received.");
+        }
       }
     } else {
       if (!isRasberryConnected) {
@@ -802,8 +858,7 @@ class _MyHomePageState extends State<MyHomePage> {
         await writeToBraille("يجب فتح الكَمِرا");
       } else {
         Position? origin;
-        await Geolocator.getCurrentPosition()
-            .then((Position position) {
+        await Geolocator.getCurrentPosition().then((Position position) {
           origin = position;
         });
 
@@ -879,14 +934,12 @@ class _MyHomePageState extends State<MyHomePage> {
         _isAsking = false;
       });
       lastAskedQuestion = question;
-      await ttsService.speak('لحظةً');
-      await writeToBraille('لحظة');
+      printDebug("Asking question: $question");
       if (isListeningToPlace) {
         isListeningToPlace = false;
         final loc = await Maps.getPositionOf(question);
         Position? origin;
-        await Geolocator.getCurrentPosition()
-            .then((Position position) {
+        await Geolocator.getCurrentPosition().then((Position position) {
           origin = position;
         });
         if (origin == null) {
@@ -914,8 +967,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (isListeningToPlaceForTaxi) {
         isListeningToPlaceForTaxi = false;
         Position? origin;
-        await Geolocator.getCurrentPosition()
-            .then((Position position) {
+        await Geolocator.getCurrentPosition().then((Position position) {
           origin = position;
         });
 
@@ -967,23 +1019,23 @@ class _MyHomePageState extends State<MyHomePage> {
         }
       }
       await _txRxDevice?.write(utf8.encode("identify,$question"));
-      await Future.doWhile(() async {
-        await Future.delayed(const Duration(milliseconds: 10));
-        return lastRecievedClassification == null;
-      });
-      printDebug("Last Updated value $lastRecievedClassification");
-      if (lastRecievedClassification != null) {
-        await answerQuestion(lastRecievedClassification!, lastAskedQuestion);
 
-        lastRecievedClassification = null;
-      }
+      // await Future.doWhile(() async {
+      //   await Future.delayed(const Duration(milliseconds: 10));
+      //   return lastRecievedClassification == null;
+      // });
+      // printDebug("Last Updated value $lastRecievedClassification");
+      // if (lastRecievedClassification != null) {
+      //   // await answerQuestion(lastRecievedClassification!, lastAskedQuestion);
+
+      //   // lastRecievedClassification = null;
+      // }
     });
   }
 
   Future<void> handleDirecting() async {
     Position? origin;
-    await Geolocator.getCurrentPosition()
-        .then((Position position) {
+    await Geolocator.getCurrentPosition().then((Position position) {
       origin = position;
     });
     if (origin == null) {
