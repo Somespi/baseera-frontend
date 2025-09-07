@@ -3,7 +3,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:getwidget/getwidget.dart';
+import 'package:http/http.dart' as http;
 
 //import 'package:basera/pages/ar_route.dart';
 import 'package:basera/pages/maps_route.dart';
@@ -28,7 +30,6 @@ import 'services/text_to_speech.dart';
 import 'services/ble_service.dart';
 
 import 'package:fluttertoast/fluttertoast.dart' as fluttertoast;
-import 'package:http/http.dart' as http;
 
 late List<String> labels;
 DateTime lastImageTime = DateTime.now();
@@ -153,6 +154,8 @@ class _MyHomePageState extends State<MyHomePage> {
   final answerQuestionsStreamController = StreamController<String>();
 
   List<Map<String, dynamic>?> previousObjects = [];
+
+  String chunckedData = "";
 
   @override
 
@@ -768,6 +771,165 @@ class _MyHomePageState extends State<MyHomePage> {
       ttsService.speak(answer);
       writeToBraille(answer);
     }
+
+  if (data.startsWith("image")) {
+  final imageData = data.split(',')[1];
+  printDebug("Processing image data chunk: ${imageData.length} chars");
+  
+  if (imageData.contains("<END>")) {
+    // Final chunk - add it and process everything
+    chunckedData += imageData;
+    printDebug("Final chunk received. Starting processing with ${chunckedData.length} total chars");
+    
+    try {
+      // Clean the complete accumulated data
+      String cleanedData = chunckedData.toString();
+      cleanedData = cleanedData.replaceAll("<END>", "").replaceAll("\n", "").trim();
+      
+      if (cleanedData.length % 4 != 0) {
+        cleanedData += "=" * (4 - (cleanedData.length % 4));
+      }
+      printDebug("Cleaned data length: ${cleanedData.length}");
+      printDebug("Sample: ${cleanedData.substring(0, math.min(50, cleanedData.length))}...");
+      
+      // Decode base64 to string
+      String jsonStr;
+      try {
+        final decodedBytes = base64.decode(cleanedData);
+        jsonStr = utf8.decode(decodedBytes);
+        printDebug("JSON decoded successfully, length: ${jsonStr.length}");
+      } catch (e) {
+        printDebug("Base64 decode failed: $e");
+        throw Exception('Invalid base64 data');
+      }
+      
+      // Parse JSON - handle potential double encoding
+      dynamic jsonData;
+      try {
+        jsonData = jsonDecode(jsonStr);
+        // If it's a string, try parsing again (double encoded JSON)
+        if (jsonData is String) {
+          printDebug("Double-encoded JSON detected, parsing again");
+          jsonData = jsonDecode(jsonData);
+        }
+      } catch (e) {
+        printDebug("JSON decode failed: $e");
+        printDebug("JSON string was: ${jsonStr.substring(0, math.min(200, jsonStr.length))}");
+        throw Exception('Invalid JSON format');
+      }
+      
+      // Ensure we have a Map
+      Map<String, dynamic> jsonDoc;
+      if (jsonData is Map<String, dynamic>) {
+        jsonDoc = jsonData;
+      } else if (jsonData is Map) {
+        jsonDoc = Map<String, dynamic>.from(jsonData);
+      } else {
+        printDebug("Unexpected JSON type: ${jsonData.runtimeType}");
+        throw Exception('JSON is not an object: ${jsonData.runtimeType}');
+      }
+      
+      printDebug("JSON parsed successfully!");
+      printDebug("Title: ${jsonDoc['title']}");
+      printDebug("ImageID: ${jsonDoc['imageID']}");
+      
+      // Validate required fields
+      if (!jsonDoc.containsKey('imageID')) {
+        throw Exception('Missing imageID in JSON data');
+      }
+      if (!jsonDoc.containsKey('title')) {
+        throw Exception('Missing title in JSON data');
+      }
+      
+      final uuid = const Uuid().v1();
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final file = File('${documentsDir.path}/$uuid.jpg');
+      
+      printDebug("Downloading image: https://tmpfiles.org/dl/${jsonDoc['imageID']}");
+      
+      // Download with timeout
+      final response = await http.get(
+        Uri.parse('https://tmpfiles.org/dl/${jsonDoc['imageID']}'),
+      ).timeout(const Duration(seconds: 30));
+      
+      if (response.statusCode != 200) {
+        throw Exception('Download failed: ${response.statusCode}');
+      }
+      
+      if (response.bodyBytes.isEmpty) {
+        throw Exception('Downloaded file is empty');
+      }
+      
+      // Save image
+      await file.writeAsBytes(response.bodyBytes);
+      printDebug("Image saved: ${file.path} (${response.bodyBytes.length} bytes)");
+      
+      // Handle config file
+      final configFile = File('${documentsDir.path}/config_documents.json');
+      List<dynamic> documents = [];
+      
+      if (await configFile.exists()) {
+        try {
+          final content = await configFile.readAsString();
+          if (content.trim().isNotEmpty) {
+            final decoded = jsonDecode(content);
+            documents = decoded is List ? decoded : [];
+          }
+        } catch (e) {
+          printDebug("Config file error: $e");
+        }
+      } else {
+        await configFile.create(recursive: true);
+      }
+      
+      // Add document
+      documents.add({
+        'id': uuid,
+        'title': jsonDoc['title'] ?? 'Untitled',
+        'summary': jsonDoc['summary'] ?? '',
+        'image_path': file.path,
+        'created_at': DateTime.now().toIso8601String(),
+        'file_size': response.bodyBytes.length,
+      });
+      
+      // Save config
+      await configFile.writeAsString(jsonEncode(documents));
+      
+      printDebug("SUCCESS: Document saved!");
+      
+      fluttertoast.Fluttertoast.showToast(
+        msg: "تم حفظ المستند",
+        toastLength: fluttertoast.Toast.LENGTH_SHORT,
+        gravity: fluttertoast.ToastGravity.BOTTOM,
+        backgroundColor: Colors.green,
+        textColor: Colors.white,
+        fontSize: 16.0,
+      );
+      
+    } catch (e) {
+      printDebug("ERROR: Processing failed - $e");
+      
+      fluttertoast.Fluttertoast.showToast(
+        msg: "فشل حفظ المستند",
+        toastLength: fluttertoast.Toast.LENGTH_SHORT,
+        gravity: fluttertoast.ToastGravity.BOTTOM,
+        backgroundColor: Colors.red,
+        textColor: Colors.white,
+        fontSize: 16.0,
+      );
+    } finally {
+      // Always reset for next image
+      chunckedData = "";
+      printDebug("Reset completed, ready for next image");
+    }
+    
+  } else {
+    // First/intermediate chunk - just accumulate
+    chunckedData += imageData;
+    printDebug("Chunk added: ${imageData.length} chars, total: ${chunckedData.length}");
+  }
+  }
+
     await HapticFeedback.vibrate();
   }
 
@@ -785,72 +947,6 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!isRasberryConnected) {
         await ttsService.speak("يجب فتح الكَمِرا");
         await writeToBraille("يجب فتح الكَمِرا");
-      } else {
-        await Future.delayed(const Duration(seconds: 5));
-
-        String? responseBody;
-
-        if (connectedPort.isEmpty) {
-          for (int port = 8080; port < 8090; port++) {
-            try {
-              final response =
-                  await http.get(Uri.parse("http://$connectedIp:$port/"));
-
-              if (response.statusCode != 200) continue;
-
-              connectedPort = port.toString();
-              responseBody = response.body;
-              printDebug("Connected to port $connectedPort");
-              break;
-            } catch (e) {
-              printDebug("Port $port failed: $e");
-            }
-          }
-        } else {
-          try {
-            final response = await http
-                .get(Uri.parse("http://$connectedIp:$connectedPort/"));
-            if (response.statusCode == 200) {
-              responseBody = response.body;
-            }
-          } catch (e) {
-            printDebug("Reconnect to port $connectedPort failed: $e");
-          }
-        }
-
-        if (responseBody != null) {
-          try {
-            final decodedJson = jsonDecode(responseBody);
-
-            final uuid = const Uuid().v1();
-            final documentsDir = await getApplicationDocumentsDirectory();
-            final file = File('${documentsDir.path}/$uuid.jpg');
-
-            await file.writeAsBytes(base64Decode(decodedJson['document']));
-
-            final configFile =
-                File('${documentsDir.path}/config_documents.json');
-            List<dynamic> documents = [];
-
-            if (await configFile.exists()) {
-              final content = await configFile.readAsString();
-              documents = jsonDecode(content) ?? [];
-            }
-
-            documents.add({
-              'title': decodedJson['title'],
-              'summary': decodedJson['summary'],
-              'image_path': file.path,
-            });
-
-            await configFile.writeAsString(jsonEncode(documents));
-            printDebug("Document saved to: ${file.path}");
-          } catch (e) {
-            printDebug("Error processing server response: $e");
-          }
-        } else {
-          printDebug("No valid server response received.");
-        }
       }
     } else {
       if (!isRasberryConnected) {
@@ -867,7 +963,7 @@ class _MyHomePageState extends State<MyHomePage> {
         printDebug("Trying to ask question....................");
         await _txRxDevice?.write(utf8.encode(
           """question,answer the question: '$question' 
-              ${origin != null ? "Also, note that you are currently at ${location[0].locality}, ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
+              ${origin != null ? "Also, note that you are currently at ${location[0].subLocality}: ${location[0].name} location, so make sure to answer the question based on that." : ""}
               ${isDirectionServiceRunning ? " In addition, note that the blind is trying to go to a destination, so add this to your context when answering." : "Also, Note that the blind is currently not requesting to head to a specefiec location."}
               
               """,
