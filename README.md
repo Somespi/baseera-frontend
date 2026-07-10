@@ -1,6 +1,7 @@
 ![logo](./resources/logo.png)
 
-Baseera is a Flutter-based mobile application designed primarily for accessibility and assistance to visually impaired users and their helpers. The app offers multiple features including document scanning (OCR), maps with saved locations, Bluetooth device integration, speech recognition, and text-to-speech functionality with a focus on Arabic language support. (the backend-end repo may be found [](https://github.com/Somespi/baseera-backend)).
+
+Baseera is a Flutter-based mobile application designed primarily for accessibility and assistance to visually impaired users and their helpers. The app offers multiple features including document scanning (OCR), maps with saved locations, Bluetooth device integration, speech recognition, and text-to-speech functionality with a focus on Arabic language support. (the backend-end repo may be found [here](https://github.com/Somespi/baseera-backend)).
 
 ## Features
 
