@@ -1,4 +1,9 @@
-![logo](./resources/logo.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./resources/baseera_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="./resources/baseera_light.png">
+  <img alt="Logo" src="./resources/baseera_light.png">
+</picture>
+<br><br><br>
 
 
 Baseera is a Flutter-based mobile application designed primarily for accessibility and assistance to visually impaired users and their helpers. The app offers multiple features including document scanning (OCR), maps with saved locations, Bluetooth device integration, speech recognition, and text-to-speech functionality with a focus on Arabic language support. (the backend-end repo may be found [here](https://github.com/Somespi/baseera-backend)).
